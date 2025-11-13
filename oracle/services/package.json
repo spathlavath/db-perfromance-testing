@@ -1,0 +1,42 @@
+{
+  "name": "oracle-test-app",
+  "version": "1.0.0",
+  "description": "Node.js application to test New Relic Oracle DB Receiver features",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "node test-all-features.js"
+  },
+  "keywords": [
+    "oracle",
+    "oracledb",
+    "newrelic",
+    "monitoring",
+    "otel"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "oracledb": "^6.4.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.19.2",
+    "winston": "^3.11.0",
+    "async": "^3.2.5",
+    "newrelic": "^13.3.1",
+    "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/sdk-node": "^0.51.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.45.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.51.0",
+    "@opentelemetry/exporter-metrics-otlp-proto": "^0.51.0",
+    "@opentelemetry/sdk-metrics": "^1.24.0",
+    "@opentelemetry/sdk-trace-node": "^1.24.0",
+    "@opentelemetry/semantic-conventions": "^1.24.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
