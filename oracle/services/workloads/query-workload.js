@@ -189,7 +189,7 @@ async function heavyUpdateWorkload(pool, logger, count = 10) {
       // Bulk update departments with complex subquery - forces table scan and locks
       await executeQuery(connection, `
         UPDATE departments d
-        SET department_name = department_name || '_UPD_' || TO_CHAR(SYSDATE, 'MMSS')
+        SET department_name = SUBSTR(department_name || '_U' || TO_CHAR(SYSDATE, 'SS'), 1, 30)
         WHERE department_id IN (
           SELECT DISTINCT department_id 
           FROM employees 
