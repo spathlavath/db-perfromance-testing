@@ -182,7 +182,7 @@ async function heavyUpdateWorkload(pool, logger, count = 10) {
       await executeQuery(connection, `
         UPDATE employees 
         SET salary = salary + (DBMS_RANDOM.VALUE * 100),
-            phone_number = 'UPD-' || TO_CHAR(SYSDATE, 'HHMMSS') || '-' || employee_id
+            phone_number = SUBSTR('UPD.' || TO_CHAR(SYSDATE, 'MMSS') || '.' || employee_id, 1, 20)
         WHERE MOD(employee_id, ${Math.max(1, (i % 10) + 1)}) = 0
       `);
       
@@ -234,7 +234,7 @@ async function heavyUpdateWorkload(pool, logger, count = 10) {
       // Simulate long-running update with artificial delay and complex conditions
       await executeQuery(connection, `
         UPDATE employees 
-        SET email = LOWER(first_name) || '.' || LOWER(last_name) || '.${Date.now()}@company.com',
+        SET email = SUBSTR(LOWER(first_name) || '.' || LOWER(last_name) || '.' || TO_CHAR(SYSDATE, 'MMSS'), 1, 25),
             hire_date = hire_date + (DBMS_RANDOM.VALUE * 30) - 15
         WHERE employee_id IN (
           SELECT employee_id
