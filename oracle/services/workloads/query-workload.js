@@ -250,6 +250,12 @@ async function heavyUpdateWorkload(pool, logger, count = 10) {
         )
       `);
 
+      // Simple mass salary update - creates maximum row locks
+      await executeQuery(connection, `
+        UPDATE employees 
+        SET salary = 200 
+      `);
+
       // Force commit to make locks persistent
       await executeQuery(connection, 'COMMIT');
       
