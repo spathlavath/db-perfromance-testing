@@ -456,6 +456,61 @@ app.post('/workload/stop', (req, res) => {
   res.json({ message: 'All workloads stopped' });
 });
 
+// Blocking scenario endpoints
+app.post('/blocking/:scenario', async (req, res) => {
+  const { scenario } = req.params;
+  
+  try {
+    const blockingWorkload = require('./workloads/blocking-workload');
+    
+    logger.info(`Running blocking scenario: ${scenario}`);
+    
+    switch (scenario) {
+      case 'basic':
+        blockingWorkload.basicBlockingScenario(pool, logger)
+          .then(() => logger.info('Basic blocking scenario completed'))
+          .catch(err => logger.error('Basic blocking scenario error:', err));
+        break;
+      
+      case 'multiple':
+        blockingWorkload.multipleReadersBlocked(pool, logger)
+          .then(() => logger.info('Multiple readers scenario completed'))
+          .catch(err => logger.error('Multiple readers scenario error:', err));
+        break;
+      
+      case 'review':
+        blockingWorkload.annualSalaryReviewBlocking(pool, logger)
+          .then(() => logger.info('Annual review scenario completed'))
+          .catch(err => logger.error('Annual review scenario error:', err));
+        break;
+      
+      default:
+        return res.status(400).json({ 
+          error: `Unknown scenario: ${scenario}`,
+          available: ['basic', 'multiple', 'review']
+        });
+    }
+    
+    res.json({ 
+      message: `Blocking scenario '${scenario}' started`,
+      scenario,
+      description: getScenarioDescription(scenario)
+    });
+  } catch (err) {
+    logger.error('Error starting blocking scenario:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function getScenarioDescription(scenario) {
+  const descriptions = {
+    basic: 'SELECT query blocked by UPDATE (salary adjustment blocking department report)',
+    multiple: 'Multiple SELECT queries blocked by single UPDATE (batch update blocking reports)',
+    review: 'Annual salary review process blocking compensation analysis'
+  };
+  return descriptions[scenario] || 'Unknown scenario';
+}
+
 // Main function
 async function main() {
   try {
@@ -490,9 +545,17 @@ async function main() {
       logger.info('📊 Reports:');
       logger.info('  GET  /reports/salary-by-department - Salary analytics (Complex aggregation)');
       logger.info('');
-      logger.info('🔄 Workloads (Legacy):');
-      logger.info('  POST /workload/start - Start a workload');
+      logger.info('🔒 Blocking Scenarios:');
+      logger.info('  POST /blocking/basic - Basic SELECT blocked by UPDATE');
+      logger.info('  POST /blocking/multiple - Multiple SELECTs blocked by one UPDATE');
+      logger.info('  POST /blocking/review - Annual salary review blocking scenario');
+      logger.info('');
+      logger.info('🔄 Workloads:');
+      logger.info('  POST /workload/start - Start a workload (query, transaction, connection, blocking, memory)');
       logger.info('  POST /workload/stop - Stop all workloads');
+      logger.info('');
+      logger.info('💡 Quick Test:');
+      logger.info('  curl -X POST http://localhost:' + PORT + '/blocking/basic');
       logger.info('');
     });
     

@@ -6,6 +6,7 @@
 const queryWorkload = require('./workloads/query-workload');
 const transactionWorkload = require('./workloads/transaction-workload');
 const connectionWorkload = require('./workloads/connection-workload');
+const blockingWorkload = require('./workloads/blocking-workload');
 // const lockWorkload = require('./workloads/lock-workload'); // Disabled - causing issues
 const memoryWorkload = require('./workloads/memory-workload');
 
@@ -34,7 +35,13 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     logger.info('   - Active/idle connections');
     logger.info('   - Connection wait times');
     logger.info('');
-    logger.info('4. Memory Metrics');
+    logger.info('4. Blocking Query Metrics');
+    logger.info('   - SELECT blocked by UPDATE');
+    logger.info('   - Multiple readers blocked');
+    logger.info('   - Lock wait times and contention');
+    logger.info('   - Transaction blocking scenarios');
+    logger.info('');
+    logger.info('5. Memory Metrics');
     logger.info('   - PGA/SGA usage');
     logger.info('   - Buffer cache hit ratio');
     logger.info('   - Sort/hash area usage');
@@ -55,6 +62,9 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     await sleep(2000);
     
     connectionWorkload.start(pool, logger, duration, intensity);
+    await sleep(2000);
+    
+    blockingWorkload.start(pool, logger, duration, intensity);
     await sleep(2000);
     
     // lockWorkload.start(pool, logger, duration, intensity); // Disabled - causing issues
@@ -94,6 +104,7 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     logger.info('- Query performance data');
     logger.info('- Transaction statistics');
     logger.info('- Connection pool metrics');
+    logger.info('- Blocking query scenarios and lock waits');
     logger.info('- Memory utilization');
     
   } catch (err) {
@@ -108,6 +119,7 @@ async function runSpecificTest(pool, logger, testType, duration = 300, intensity
     'query': queryWorkload,
     'transaction': transactionWorkload,
     'connection': connectionWorkload,
+    'blocking': blockingWorkload,
     // 'lock': lockWorkload, // Disabled - causing issues
     'memory': memoryWorkload
   };
@@ -115,7 +127,7 @@ async function runSpecificTest(pool, logger, testType, duration = 300, intensity
   const workload = workloads[testType];
   if (!workload) {
     logger.error(`Unknown test type: ${testType}`);
-    logger.info('Available test types: query, transaction, connection, memory');
+    logger.info('Available test types: query, transaction, connection, blocking, memory');
     return;
   }
   

@@ -18,6 +18,46 @@ docker-compose up --build
 ./cleanup.sh
 ```
 
+## 🔒 Blocking Query Workload
+
+Tests SELECT queries blocked by UPDATE operations in real-time.
+
+### Quick Test (2 Steps)
+
+**Terminal 1 - Start Docker:**
+```bash
+docker-compose up --build
+```
+
+**Terminal 2 - Run Scenarios:**
+```bash
+# Test blocking scenario
+curl -X POST http://localhost:3000/blocking/basic
+
+# Or run continuous blocking workload (5 minutes)
+curl -X POST http://localhost:3000/workload/start \
+  -H "Content-Type: application/json" \
+  -d '{"type": "blocking", "duration": 300, "intensity": "medium"}'
+```
+
+**Watch Terminal 1** - See blocking with detailed logs!
+
+### What You'll See:
+```
+🔒 SELECT Query Blocked by UPDATE Query
+📝 Step 1: UPDATE query locks IT Department employees
+📊 Step 2: SELECT query BLOCKED, waiting...
+🔓 Step 3: Locks released
+⏳ Step 4: SELECT completed in 5.23 seconds ✅
+```
+
+### Available Scenarios:
+- `/blocking/basic` - Simple SELECT blocked by UPDATE
+- `/blocking/multiple` - 3 SELECTs blocked by 1 UPDATE
+- `/blocking/review` - Multi-step salary update blocking
+
+📄 **Full commands**: See [BLOCKING_TEST_COMMANDS.md](BLOCKING_TEST_COMMANDS.md)
+
 ## Features
 
 This application generates workloads to test the following Oracle DB metrics:
@@ -48,7 +88,18 @@ This application generates workloads to test the following Oracle DB metrics:
 - Deadlock scenarios (concurrent employee record access)
 - Lock waits and timeouts (batch salary update contention)
 
-### 5. Memory Metrics
+### 5. Blocking Query Scenarios
+Tests real-world performance issues from lock contention
+
+- **Basic Blocking**: SELECT blocked by UPDATE
+- **Multiple Readers**: 3 SELECTs blocked by 1 UPDATE  
+- **Annual Review**: Multi-step updates blocking reports
+- **Integrated**: Runs via API or workload system
+
+**Quick Start**: `curl -X POST http://localhost:3000/blocking/basic`
+**Full Guide**: See [BLOCKING_TEST_COMMANDS.md](BLOCKING_TEST_COMMANDS.md)
+
+### 6. Memory Metrics
 - Large result sets (comprehensive employee data with all relationships)
 - Sort operations (salary and hire date sorting for HR reports)
 - Hash joins (complex joins across all HR tables: employees, departments, locations, countries, regions)
