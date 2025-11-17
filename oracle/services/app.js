@@ -440,24 +440,24 @@ app.get('/reports/salary-by-department', async (req, res) => {
   }
 });
 
-// Start workload endpoint (kept for backward compatibility)
-app.post('/workload/start', async (req, res) => {
-  const { type, duration, intensity } = req.body;
+// // Start workload endpoint (kept for backward compatibility)
+// app.post('/workload/start', async (req, res) => {
+//   const { type, duration, intensity } = req.body;
   
-  try {
-    const workloadModule = require(`./workloads/${type}-workload`);
-    workloadModule.start(pool, logger, duration, intensity);
-    res.json({ message: `${type} workload started`, duration, intensity });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+//   try {
+//     const workloadModule = require(`./workloads/${type}-workload`);
+//     workloadModule.start(pool, logger, duration, intensity);
+//     res.json({ message: `${type} workload started`, duration, intensity });
+//   } catch (err) {
+//     res.status(400).json({ error: err.message });
+//   }
+// });
 
-// Stop all workloads
-app.post('/workload/stop', (req, res) => {
-  // Implementation for stopping workloads
-  res.json({ message: 'All workloads stopped' });
-});
+// // Stop all workloads
+// app.post('/workload/stop', (req, res) => {
+//   // Implementation for stopping workloads
+//   res.json({ message: 'All workloads stopped' });
+// });
 
 // Main function
 async function main() {
@@ -493,9 +493,9 @@ async function main() {
       logger.info('📊 Reports:');
       logger.info('  GET  /reports/salary-by-department - Salary analytics (Complex aggregation)');
       logger.info('');
-      logger.info('🔄 Workloads (Legacy):');
-      logger.info('  POST /workload/start - Start a workload');
-      logger.info('  POST /workload/stop - Stop all workloads');
+      // logger.info('🔄 Workloads (Legacy):');
+      // logger.info('  POST /workload/start - Start a workload');
+      // logger.info('  POST /workload/stop - Stop all workloads');
       logger.info('');
     });
     
