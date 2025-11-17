@@ -143,18 +143,21 @@ app.get('/pool-stats', (req, res) => {
 // HR Portal Endpoints - Realistic business operations
 // ============================================================================
 
-// 1. GET /employees - List all employees (SELECT with JOIN)
+// 1. GET /employees - Salary analysis by job (SELECT with aggregation and hint)
 app.get('/employees', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     const result = await connection.execute(
-      `SELECT e.employee_id, e.first_name, e.last_name, e.email, e.phone_number,
-              e.hire_date, e.salary, j.job_title, d.department_name
-       FROM employees e
-       LEFT JOIN jobs j ON e.job_id = j.job_id
-       LEFT JOIN departments d ON e.department_id = d.department_id
-       ORDER BY e.employee_id`,
+      `SELECT /*+ FULL(employees) */ 
+          job_id,
+          COUNT(*) as emp_count,
+          AVG(salary) as avg_salary,
+          SUM(salary) as total_salary
+        FROM employees
+        WHERE salary > 5000
+        GROUP BY job_id
+        ORDER BY total_salary DESC`,
       [],
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
