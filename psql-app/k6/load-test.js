@@ -19,18 +19,12 @@ export const options = {
       executor: 'ramping-vus',
       startVUs: 0,
       stages: [
-//            { duration: '1m', target: 10 },  // Stay at 10 VUs for 10 minutes
-//                { duration: '5m', target: 110 }, // Ramp-up from 10 to 110 VUs in 10 minutes
-//                { duration: '5m', target: 110 }, // Stay at 110 VUs for 10 minutes
-                { duration: '10m', target: 310 }, // Ramp-up from 110 to 210 VUs in 10 minutes
-                { duration: '10m', target: 310 }, // Stay at 210 VUs for 10 minutes
-                { duration: '15m', target: 550 }, // Ramp-up from 210 to 310 VUs in 10 minutes
-                { duration: '15m', target: 550 }, // Stay at 310 VUs for 10 minutes
-                { duration: '20m', target: 1000 }, // Ramp-up from 310 to 410 VUs in 10 minutes
-                { duration: '20m', target: 1000 }, // Stay at 410 VUs for 10 minutes
-                { duration: '30m', target: 2000 }, // Ramp-up from 410 to 510 VUs in 10 minutes
-                { duration: '30m', target: 2000 }, // Stay at 510 VUs for 10 minutes
-                { duration: '5m', target: 0 },   // Ramp-down to 0 VUs
+                { duration: '5m', target: 100 },   // Ramp-up to 100 VUs in 5 minutes
+                { duration: '20m', target: 100 },  // Hold at 100 VUs for 20 minutes
+                { duration: '5m', target: 200 },   // Ramp-up to 200 VUs in 5 minutes
+                { duration: '20m', target: 200 },  // Hold at 200 VUs for 20 minutes
+                { duration: '5m', target: 100 },   // Ramp-down to 100 VUs in 5 minutes
+                { duration: '5m', target: 0 },     // Ramp-down to 0 VUs in 5 minutes
           ],
           exec: 'movieMatrixApp'
 
