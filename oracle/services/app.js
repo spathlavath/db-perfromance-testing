@@ -437,23 +437,454 @@ app.get('/reports/salary-by-department', async (req, res) => {
   }
 });
 
-// Start workload endpoint (kept for backward compatibility)
-app.post('/workload/start', async (req, res) => {
-  const { type, duration, intensity } = req.body;
-  
+// ============================================================================
+// Workload Endpoints - Stimulate Oracle Metrics for newrelicoraclereceiver
+// ============================================================================
+
+// Parse-intensive workload - stimulates parse metrics
+app.post('/workload/parse', async (req, res) => {
+  const { iterations = 50, use_binds = false } = req.body;
+  let connection;
   try {
-    const workloadModule = require(`./workloads/${type}-workload`);
-    workloadModule.start(pool, logger, duration, intensity);
-    res.json({ message: `${type} workload started`, duration, intensity });
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      if (use_binds) {
+        await connection.execute('SELECT * FROM employees WHERE employee_id = :id', [i % 100 + 100]);
+      } else {
+        await connection.execute(`SELECT * FROM employees WHERE employee_id = ${i % 100 + 100}`);
+      }
+    }
+    res.json({ message: 'Parse workload completed', iterations, type: use_binds ? 'soft' : 'hard' });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
   }
 });
 
-// Stop all workloads
-app.post('/workload/stop', (req, res) => {
-  // Implementation for stopping workloads
-  res.json({ message: 'All workloads stopped' });
+// Full table scan workload - stimulates disk I/O metrics
+app.post('/workload/full-scan', async (req, res) => {
+  const { iterations = 5 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute('SELECT /*+ FULL(e) */ * FROM employees e WHERE salary > 0');
+    }
+    res.json({ message: 'Full scan workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Sorting workload - stimulates sort metrics
+app.post('/workload/sort', async (req, res) => {
+  const { size = 'small' } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const limit = size === 'large' ? 10000 : size === 'medium' ? 1000 : 100;
+    await connection.execute(`
+      SELECT * FROM (
+        SELECT e1.*, e2.salary as salary2 
+        FROM employees e1, employees e2
+        WHERE ROWNUM <= ${limit}
+      ) ORDER BY salary, salary2, first_name, last_name
+    `);
+    res.json({ message: 'Sort workload completed', size });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Redo generation workload - stimulates redo metrics
+app.post('/workload/redo', async (req, res) => {
+  const { operations = 50 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < operations; i++) {
+      await connection.execute(
+        'UPDATE employees SET salary = salary + 1 WHERE employee_id = :id',
+        [100 + (i % 10)],
+        { autoCommit: false }
+      );
+    }
+    await connection.commit();
+    res.json({ message: 'Redo workload completed', operations });
+  } catch (err) {
+    if (connection) await connection.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Rollback workload - stimulates rollback metrics
+app.post('/workload/rollback', async (req, res) => {
+  const { operations = 10 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < operations; i++) {
+      await connection.execute(
+        'UPDATE employees SET salary = salary + 100 WHERE department_id = :dept',
+        [10 + (i % 5)],
+        { autoCommit: false }
+      );
+      await connection.rollback();
+    }
+    res.json({ message: 'Rollback workload completed', operations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Cursor workload - stimulates cursor metrics
+app.post('/workload/cursor', async (req, res) => {
+  const { count = 20 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < count; i++) {
+      await connection.execute('SELECT * FROM employees WHERE department_id = :dept', [10 + (i % 10)]);
+    }
+    res.json({ message: 'Cursor workload completed', count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Index scan workload - stimulates index scan metrics
+app.post('/workload/index-scan', async (req, res) => {
+  const { iterations = 30 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute('SELECT * FROM employees WHERE employee_id = :id', [100 + i]);
+    }
+    res.json({ message: 'Index scan workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Physical I/O workload - stimulates physical read/write metrics
+app.post('/workload/physical-io', async (req, res) => {
+  const { iterations = 10 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute('SELECT /*+ FULL(e) NO_CACHE */ COUNT(*) FROM employees e');
+    }
+    res.json({ message: 'Physical I/O workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Recursive calls workload - stimulates recursive call metrics
+app.post('/workload/recursive', async (req, res) => {
+  const { depth = 3 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.execute(`
+      SELECT LEVEL, employee_id, manager_id 
+      FROM employees 
+      START WITH manager_id IS NULL 
+      CONNECT BY PRIOR employee_id = manager_id AND LEVEL <= ${depth}
+    `);
+    res.json({ message: 'Recursive workload completed', depth });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Session workload - stimulates session metrics
+app.post('/workload/session', async (req, res) => {
+  const { count = 5, duration = 2 } = req.body;
+  const connections = [];
+  try {
+    for (let i = 0; i < count; i++) {
+      const conn = await pool.getConnection();
+      connections.push(conn);
+      await conn.execute('SELECT * FROM employees WHERE ROWNUM <= 10');
+    }
+    await new Promise(resolve => setTimeout(resolve, duration * 1000));
+    res.json({ message: 'Session workload completed', count, duration });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    for (const conn of connections) {
+      await conn.close();
+    }
+  }
+});
+
+// Wait events workload - stimulates wait event metrics
+app.post('/workload/wait', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.execute('SELECT /*+ FULL(e1) FULL(e2) */ e1.*, e2.* FROM employees e1, employees e2 WHERE e1.salary = e2.salary');
+    res.json({ message: 'Wait events workload completed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Comprehensive workload - runs multiple workload types
+app.post('/workload/comprehensive', async (req, res) => {
+  const { intensity = 'medium' } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const iterations = intensity === 'high' ? 50 : intensity === 'low' ? 10 : 25;
+    
+    // Parse activity
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute(`SELECT * FROM employees WHERE employee_id = ${100 + i}`);
+    }
+    
+    // Full scans
+    await connection.execute('SELECT /*+ FULL(e) */ COUNT(*) FROM employees e');
+    
+    // Sorts
+    await connection.execute('SELECT * FROM employees ORDER BY salary, hire_date');
+    
+    // Redo generation
+    await connection.execute('UPDATE employees SET salary = salary + 0.01 WHERE employee_id = 100', [], { autoCommit: true });
+    
+    res.json({ message: 'Comprehensive workload completed', intensity });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Lock contention workload - stimulates lock and blocking metrics
+app.post('/workload/lock', async (req, res) => {
+  const { duration = 3 } = req.body;
+  const connections = [];
+  try {
+    // Session 1: Lock a row
+    const conn1 = await pool.getConnection();
+    connections.push(conn1);
+    await conn1.execute('UPDATE employees SET salary = salary + 1 WHERE employee_id = 100', [], { autoCommit: false });
+    
+    // Session 2: Try to update same row (will wait)
+    const conn2 = await pool.getConnection();
+    connections.push(conn2);
+    
+    const lockPromise = conn2.execute('UPDATE employees SET salary = salary + 1 WHERE employee_id = 100', [], { autoCommit: false });
+    
+    // Hold lock for specified duration
+    await new Promise(resolve => setTimeout(resolve, duration * 1000));
+    
+    // Release lock
+    await conn1.rollback();
+    
+    // Let second session complete
+    await lockPromise;
+    await conn2.rollback();
+    
+    res.json({ message: 'Lock contention workload completed', duration });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    for (const conn of connections) {
+      try { await conn.rollback(); } catch (e) {}
+      await conn.close();
+    }
+  }
+});
+
+// PDB metrics workload - stimulates PDB-specific metrics
+app.post('/workload/pdb', async (req, res) => {
+  const { operations = 30 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    // Mix of operations to stimulate PDB metrics
+    for (let i = 0; i < operations; i++) {
+      // Logical reads
+      await connection.execute('SELECT * FROM employees WHERE employee_id = :id', [100 + (i % 50)]);
+      
+      // Physical I/O
+      if (i % 5 === 0) {
+        await connection.execute('SELECT /*+ FULL(e) NO_CACHE */ COUNT(*) FROM employees e');
+      }
+      
+      // Transactions
+      if (i % 3 === 0) {
+        await connection.execute('UPDATE employees SET salary = salary + 0.01 WHERE employee_id = :id', [100 + i], { autoCommit: true });
+      }
+    }
+    
+    res.json({ message: 'PDB workload completed', operations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Parallel execution workload - stimulates parallel session metrics
+app.post('/workload/parallel', async (req, res) => {
+  const { degree = 4 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    // Enable parallel execution
+    await connection.execute(`ALTER SESSION SET PARALLEL_DEGREE_POLICY = MANUAL`);
+    await connection.execute(`ALTER SESSION FORCE PARALLEL QUERY PARALLEL ${degree}`);
+    
+    // Execute parallel query
+    await connection.execute(`
+      SELECT /*+ PARALLEL(e, ${degree}) */ 
+        department_id, COUNT(*), AVG(salary), MAX(salary), MIN(salary)
+      FROM employees e
+      GROUP BY department_id
+    `);
+    
+    res.json({ message: 'Parallel workload completed', degree });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Network traffic workload - stimulates network metrics
+app.post('/workload/network', async (req, res) => {
+  const { iterations = 20 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    for (let i = 0; i < iterations; i++) {
+      // Fetch large result sets
+      const result = await connection.execute(
+        'SELECT * FROM employees ORDER BY employee_id',
+        [],
+        { outFormat: oracledb.OUT_FORMAT_OBJECT }
+      );
+    }
+    
+    res.json({ message: 'Network workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Consistent read workload - stimulates consistent read metrics
+app.post('/workload/consistent-read', async (req, res) => {
+  const { iterations = 20 } = req.body;
+  const connections = [];
+  try {
+    // Create long-running query
+    const conn1 = await pool.getConnection();
+    connections.push(conn1);
+    
+    // Start transaction to create read consistency point
+    await conn1.execute('SELECT * FROM employees', [], { outFormat: oracledb.OUT_FORMAT_OBJECT });
+    
+    // Another session makes changes
+    const conn2 = await pool.getConnection();
+    connections.push(conn2);
+    
+    for (let i = 0; i < iterations; i++) {
+      await conn2.execute('UPDATE employees SET salary = salary + 1 WHERE employee_id = :id', [100 + (i % 10)], { autoCommit: true });
+    }
+    
+    // First session reads again - will use undo for consistent read
+    await conn1.execute('SELECT COUNT(*), SUM(salary) FROM employees');
+    
+    res.json({ message: 'Consistent read workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    for (const conn of connections) {
+      await conn.close();
+    }
+  }
+});
+
+// Block changes workload - stimulates block change metrics
+app.post('/workload/block-change', async (req, res) => {
+  const { operations = 50 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    for (let i = 0; i < operations; i++) {
+      await connection.execute(
+        'UPDATE employees SET salary = salary + :inc WHERE department_id = :dept',
+        { inc: i % 100, dept: 10 + (i % 10) },
+        { autoCommit: false }
+      );
+    }
+    
+    await connection.commit();
+    res.json({ message: 'Block change workload completed', operations });
+  } catch (err) {
+    if (connection) await connection.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Enqueue workload - stimulates enqueue request/wait metrics
+app.post('/workload/enqueue', async (req, res) => {
+  const { iterations = 15 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    
+    for (let i = 0; i < iterations; i++) {
+      // DML that requires various enqueues
+      await connection.execute('INSERT INTO job_history (employee_id, start_date, end_date, job_id, department_id) VALUES (:1, SYSDATE, SYSDATE, :2, :3)', 
+        [100 + i, 'IT_PROG', 60],
+        { autoCommit: false }
+      );
+      
+      await connection.execute('UPDATE departments SET department_name = department_name WHERE department_id = :dept', [10 + (i % 10)], { autoCommit: false });
+      
+      await connection.rollback();
+    }
+    
+    res.json({ message: 'Enqueue workload completed', iterations });
+  } catch (err) {
+    if (connection) await connection.rollback();
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
 });
 
 // Main function
