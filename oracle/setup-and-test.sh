@@ -15,8 +15,6 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Change to oracle directory
-cd /Users/spathlavath/otel/db-perfromance-testing/oracle
 
 echo -e "${BLUE}Step 1: Verify Go installation${NC}"
 if ! command -v go &> /dev/null; then
