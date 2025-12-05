@@ -20,7 +20,7 @@ const ATTR_DB_NAMESPACE = 'db.namespace';
 const tracer = trace.getTracer('oracledb', '6.4.0');
 
 // Debug flag - set to true to enable detailed logging
-const DEBUG = true;
+const DEBUG = false;
 
 // Store the original execute method
 const originalExecute = oracledb.Connection.prototype.execute;
