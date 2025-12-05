@@ -52,10 +52,15 @@ function get(endpoint) {
 }
 
 export function setup() {
+  console.log('='.repeat(80));
+  console.log('🚀 K6 LOAD TEST STARTING - Oracle Metrics Stimulation');
+  console.log('='.repeat(80));
   console.log('Health check...');
   const health = get('/health');
   if (health.status !== 200) throw new Error('API unhealthy');
-  console.log('Starting Oracle metrics workload...');
+  console.log('✅ API is healthy - Starting workload with 33 endpoint types');
+  console.log('📊 Test stages: 30s→10VU, 2m→25VU, 5m→50VU, 3m→75VU (peak), 2m→50VU, 1m→0VU');
+  console.log('='.repeat(80));
 }
 
 export default function() {
