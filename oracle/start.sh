@@ -10,5 +10,12 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-# Build and start
-docker-compose up --build
+# Build and start (support both docker-compose and docker compose)
+if command -v docker-compose &> /dev/null; then
+    docker-compose up --build
+elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
+    docker compose up --build
+else
+    echo "❌ Neither 'docker-compose' nor 'docker compose' command found"
+    exit 1
+fi
