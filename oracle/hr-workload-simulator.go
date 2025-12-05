@@ -10,12 +10,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -100,6 +102,19 @@ func (ws *WorkloadStats) IncrementErrors() {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	ws.Errors++
+}
+
+// isShutdownError checks if an error is due to context cancellation or shutdown
+func isShutdownError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return errors.Is(err, context.Canceled) ||
+		errors.Is(err, context.DeadlineExceeded) ||
+		strings.Contains(errStr, "context canceled") ||
+		strings.Contains(errStr, "context deadline exceeded") ||
+		strings.Contains(errStr, "ORA-00054") // Resource busy - expected during shutdown
 }
 
 func (ws *WorkloadStats) IncrementTableLocks() {
@@ -461,8 +476,10 @@ func blockingWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerI
 		default:
 			// Create blocking scenario
 			if err := createBlockingScenario(ctx, db, workerID, stats); err != nil {
-				log.Printf("[Blocking-%d] Error: %v", workerID, err)
-				stats.IncrementErrors()
+				if !isShutdownError(err) {
+					log.Printf("[Blocking-%d] Error: %v", workerID, err)
+					stats.IncrementErrors()
+				}
 			}
 
 			// Wait before next blocking scenario
@@ -676,8 +693,10 @@ func childCursorWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, work
 			for _, binds := range bindSets {
 				rows, err := db.QueryContext(ctx, baseQuery, binds...)
 				if err != nil {
-					log.Printf("[ChildCursor-%d] Error: %v", workerID, err)
-					stats.IncrementErrors()
+					if !isShutdownError(err) {
+						log.Printf("[ChildCursor-%d] Error: %v", workerID, err)
+						stats.IncrementErrors()
+					}
 					continue
 				}
 
@@ -763,8 +782,10 @@ func tableLockWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, worker
 			return
 		default:
 			if err := createTableLockScenario(ctx, db, workerID, stats); err != nil {
-				log.Printf("[TableLock-%d] Error: %v", workerID, err)
-				stats.IncrementErrors()
+				if !isShutdownError(err) {
+					log.Printf("[TableLock-%d] Error: %v", workerID, err)
+					stats.IncrementErrors()
+				}
 			}
 
 			// Wait before next table lock scenario
@@ -887,7 +908,9 @@ func commitContentionWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB,
 			for i := 0; i < 50; i++ {
 				tx, err := conn.BeginTx(ctx, nil)
 				if err != nil {
-					log.Printf("[CommitContention-%d] Error beginning tx: %v", workerID, err)
+					if !isShutdownError(err) {
+						log.Printf("[CommitContention-%d] Error beginning tx: %v", workerID, err)
+					}
 					break
 				}
 
@@ -895,13 +918,17 @@ func commitContentionWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB,
 				_, err = tx.ExecContext(ctx, "UPDATE employees SET salary = salary + 1 WHERE employee_id = :1", 100+rand.Intn(10))
 				if err != nil {
 					tx.Rollback()
-					log.Printf("[CommitContention-%d] Error updating: %v", workerID, err)
+					if !isShutdownError(err) {
+						log.Printf("[CommitContention-%d] Error updating: %v", workerID, err)
+					}
 					break
 				}
 
 				// Commit immediately - creates log file sync waits
 				if err := tx.Commit(); err != nil {
-					log.Printf("[CommitContention-%d] Error committing: %v", workerID, err)
+					if !isShutdownError(err) {
+						log.Printf("[CommitContention-%d] Error committing: %v", workerID, err)
+					}
 					break
 				}
 
@@ -1029,8 +1056,10 @@ func indexContentionWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, 
 			return
 		default:
 			if err := createIndexContentionScenario(ctx, db, workerID, stats); err != nil {
-				log.Printf("[IndexContention-%d] Error: %v", workerID, err)
-				stats.IncrementErrors()
+				if !isShutdownError(err) {
+					log.Printf("[IndexContention-%d] Error: %v", workerID, err)
+					stats.IncrementErrors()
+				}
 			}
 
 			time.Sleep(time.Duration(8+rand.Intn(8)) * time.Second)
@@ -1189,8 +1218,10 @@ func tempSegmentWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, work
 			start := time.Now()
 			rows, err := db.QueryContext(ctx, query)
 			if err != nil {
-				log.Printf("[TempSegment-%d] Error: %v", workerID, err)
-				stats.IncrementErrors()
+				if !isShutdownError(err) {
+					log.Printf("[TempSegment-%d] Error: %v", workerID, err)
+					stats.IncrementErrors()
+				}
 				time.Sleep(2 * time.Second)
 				continue
 			}
