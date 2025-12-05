@@ -73,10 +73,11 @@ const dbConfig = {
   user: process.env.ORACLE_USER || 'system',
   password: process.env.ORACLE_PASSWORD,
   connectString: process.env.ORACLE_CONNECT_STRING || 'localhost:1521/FREEPDB1',
-  poolMin: parseInt(process.env.POOL_MIN) || 2,
-  poolMax: parseInt(process.env.POOL_MAX) || 10,
-  poolIncrement: parseInt(process.env.POOL_INCREMENT) || 1,
-  poolTimeout: parseInt(process.env.POOL_TIMEOUT) || 60
+  poolMin: parseInt(process.env.POOL_MIN) || 10,
+  poolMax: parseInt(process.env.POOL_MAX) || 50,  // Increased for blocking scenarios
+  poolIncrement: parseInt(process.env.POOL_INCREMENT) || 2,
+  poolTimeout: parseInt(process.env.POOL_TIMEOUT) || 60,
+  queueTimeout: parseInt(process.env.QUEUE_TIMEOUT) || 120000  // 2 minutes queue timeout
 };
 
 // Initialize connection pool
