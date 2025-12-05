@@ -58,7 +58,7 @@ services:
   k6:
     image: grafana/k6
     volumes:
-      - ./k6/scripts:/scripts
+      - ./k6/scripts:/scripts:ro
     environment:
       - BASE_URL=http://oracle-test-app:3000
       - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}
@@ -69,6 +69,7 @@ services:
         condition: service_healthy
     networks:
       - oracle-network
+    user: "0:0"
     # Stimulates all Oracle metrics including wait events
     command: run /scripts/oracle-metrics.js
 
