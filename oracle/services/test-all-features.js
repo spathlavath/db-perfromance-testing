@@ -6,7 +6,8 @@
 const queryWorkload = require('./workloads/query-workload');
 const transactionWorkload = require('./workloads/transaction-workload');
 const connectionWorkload = require('./workloads/connection-workload');
-// const lockWorkload = require('./workloads/lock-workload'); // Disabled - causing issues
+const lockWorkload = require('./workloads/lock-workload'); // Re-enabled with fixes
+const blockingSessionsWorkload = require('./workloads/blocking-sessions-workload'); // NEW: For wait events & blocking monitoring
 const memoryWorkload = require('./workloads/memory-workload');
 
 async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
@@ -34,7 +35,19 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     logger.info('   - Active/idle connections');
     logger.info('   - Connection wait times');
     logger.info('');
-    logger.info('4. Memory Metrics');
+    logger.info('4. Lock & Blocking Metrics');
+    logger.info('   - Row lock contention');
+    logger.info('   - Blocking sessions');
+    logger.info('   - Wait events (enq: TX - row lock contention)');
+    logger.info('   - Final blocking session tracking');
+    logger.info('');
+    logger.info('5. Active Query Monitoring');
+    logger.info('   - Long-running active queries');
+    logger.info('   - Wait events (CPU, buffer busy, latch waits)');
+    logger.info('   - SQL child cursor metrics');
+    logger.info('   - Execution plan capture');
+    logger.info('');
+    logger.info('6. Memory Metrics');
     logger.info('   - PGA/SGA usage');
     logger.info('   - Buffer cache hit ratio');
     logger.info('   - Sort/hash area usage');
@@ -56,10 +69,14 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     
     connectionWorkload.start(pool, logger, duration, intensity);
     await sleep(2000);
-    
-    // lockWorkload.start(pool, logger, duration, intensity); // Disabled - causing issues
-    // await sleep(2000);
-    
+
+    // CRITICAL: Blocking sessions workload - Creates ACTIVE waiting sessions for receiver monitoring
+    blockingSessionsWorkload.start(pool, logger, duration, intensity);
+    await sleep(2000);
+
+    lockWorkload.start(pool, logger, duration, intensity);
+    await sleep(2000);
+
     memoryWorkload.start(pool, logger, duration, intensity);
     
     logger.info('All workloads started successfully');

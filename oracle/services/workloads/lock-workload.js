@@ -27,42 +27,62 @@ async function tableLocks(pool, logger, count = 5) {
 
 async function rowLocks(pool, logger, count = 10) {
   logger.info('Starting row lock workload...');
-  
+
   // Create multiple connections to simulate lock contention
-  const connections = [];
-  
+  const lockingConn = await pool.getConnection();
+  const waitingConns = [];
+
   try {
+    // First connection locks the row
+    const empId = 100;
+    await lockingConn.execute(
+      'SELECT employee_id, salary FROM employees WHERE employee_id = :empId FOR UPDATE',
+      { empId }
+    );
+    logger.info(`[BLOCKER] Locked employee ${empId}`);
+
+    // Wait a bit before starting waiters
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Other connections try to lock same row (will WAIT, not fail)
     for (let i = 0; i < count; i++) {
       const conn = await pool.getConnection();
-      connections.push(conn);
-      
-      // Each connection tries to lock specific employee records (salary update simulation)
-      try {
-        const empId = (i % 107) + 100;
-        await conn.execute(
-          'SELECT employee_id, salary FROM employees WHERE employee_id = :empId FOR UPDATE NOWAIT',
-          { empId }
-        );
-      } catch (err) {
-        // Expected to fail sometimes due to locks
-        logger.debug('Row lock contention:', err.message);
-      }
+      waitingConns.push(conn);
+
+      // Execute in background - will wait for lock
+      conn.execute(
+        'SELECT employee_id, salary FROM employees WHERE employee_id = :empId FOR UPDATE',
+        { empId }
+      ).catch(err => {
+        logger.debug('Row lock wait completed:', err.message);
+      });
+
+      logger.info(`[WAITING] Session ${i + 1}: Waiting for row lock`);
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
-    
-    // Hold locks briefly
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
+    // Hold locks for receiver collection_interval (at least 10-15 seconds)
+    logger.info('Holding row locks for 15 seconds to allow monitoring capture...');
+    await new Promise(resolve => setTimeout(resolve, 15000));
+
   } finally {
-    for (const conn of connections) {
+    try {
+      await lockingConn.rollback();
+      await lockingConn.close();
+    } catch (err) {
+      logger.error('Error releasing locking connection:', err.message);
+    }
+
+    for (const conn of waitingConns) {
       try {
         await conn.rollback();
         await conn.close();
       } catch (err) {
-        logger.error('Error releasing row lock:', err.message);
+        // May already be closed
       }
     }
   }
-  
+
   logger.info('Row lock workload completed');
 }
 
@@ -109,37 +129,42 @@ async function deadlockScenario(pool, logger) {
 
 async function lockWaits(pool, logger, count = 5) {
   logger.info('Starting lock wait workload...');
-  
+
   const lockingConn = await pool.getConnection();
   const waitingConns = [];
-  
+
   try {
     // First connection acquires lock on high-paid employees (simulating batch salary update)
-    await lockingConn.execute('SELECT * FROM employees WHERE salary > 15000 FOR UPDATE NOWAIT');
-    
-    // Other connections try to acquire same lock and wait
+    await lockingConn.execute('SELECT * FROM employees WHERE salary > 15000 FOR UPDATE');
+    logger.info('[BLOCKER] Locked high-salary employees');
+
+    // Wait a bit before starting waiters
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Other connections try to acquire same lock and WAIT (not timeout immediately)
     for (let i = 0; i < count; i++) {
       const conn = await pool.getConnection();
       waitingConns.push(conn);
-      
-      // This will wait for lock (or timeout)
-      setTimeout(async () => {
-        try {
-          await conn.execute('SELECT * FROM employees WHERE salary > 15000 FOR UPDATE WAIT 3');
-        } catch (err) {
-          logger.debug('Lock wait timeout (expected):', err.message);
-        }
-      }, 100 * i);
+
+      // Execute in background - will wait for lock (30 second timeout)
+      conn.execute('SELECT * FROM employees WHERE salary > 15000 FOR UPDATE')
+        .catch(err => {
+          logger.debug(`Lock wait session ${i + 1} completed:`, err.message);
+        });
+
+      logger.info(`[WAITING] Session ${i + 1}: Waiting for high-salary employee locks`);
+      await new Promise(resolve => setTimeout(resolve, 500));
     }
-    
-    // Hold lock for a bit
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
+
+    // Hold lock long enough for receiver to capture (at least 15 seconds)
+    logger.info('Holding lock waits for 20 seconds to allow monitoring capture...');
+    await new Promise(resolve => setTimeout(resolve, 20000));
+
   } finally {
     try {
       await lockingConn.rollback();
       await lockingConn.close();
-      
+
       for (const conn of waitingConns) {
         try {
           await conn.rollback();
@@ -152,7 +177,7 @@ async function lockWaits(pool, logger, count = 5) {
       logger.error('Error cleaning up lock waits:', err.message);
     }
   }
-  
+
   logger.info('Lock wait workload completed');
 }
 
