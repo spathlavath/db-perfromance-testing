@@ -10,6 +10,13 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
+# Fix K6 script permissions
+if [ -d "k6/scripts" ]; then
+    echo "🔧 Fixing K6 script permissions..."
+    chmod -R 755 k6/scripts/
+    chmod 644 k6/scripts/*.js 2>/dev/null || true
+fi
+
 # Build and start (support both docker-compose and docker compose)
 if command -v docker-compose &> /dev/null; then
     docker-compose up --build
