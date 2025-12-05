@@ -329,8 +329,10 @@ func slowQueryWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, worker
 			log.Printf("[SlowQuery-%d] Query executed in %v (%d rows)", workerID, elapsed, rowCount)
 			stats.IncrementSlowQueries()
 
-			// Small delay between queries
-			time.Sleep(time.Duration(rand.Intn(3000)) * time.Millisecond)
+			// Shorter delay to maintain more queries in-flight for better monitoring coverage
+			// 0.5-2 seconds instead of 0-3 seconds creates better overlap
+			sleepTime := time.Duration(500+rand.Intn(1500)) * time.Millisecond
+			time.Sleep(sleepTime)
 		}
 	}
 }
