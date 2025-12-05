@@ -37,6 +37,14 @@ type Config struct {
 	IOWorkers          int
 	ChildCursorWorkers int
 	ConcurrencyWorkers int
+
+	// New Oracle-specific lock and wait scenarios
+	TableLockWorkers       int // enq: TM - table lock contention
+	CommitWorkers          int // log file sync - commit contention
+	BufferBusyWorkers      int // buffer busy waits
+	SequenceWorkers        int // enq: SQ - sequence contention
+	IndexContentionWorkers int // index range lock contention
+	TempSegmentWorkers     int // direct path temp - temp I/O waits
 }
 
 // WorkloadStats tracks execution statistics
@@ -48,6 +56,14 @@ type WorkloadStats struct {
 	ChildCursorsCreated   int
 	WaitEventsGenerated   int
 	Errors                int
+
+	// New scenario counters
+	TableLocksCreated   int
+	CommitContentions   int
+	BufferBusyEvents    int
+	SequenceContentions int
+	IndexContentions    int
+	TempSegmentWaits    int
 }
 
 func (ws *WorkloadStats) IncrementSlowQueries() {
@@ -86,6 +102,42 @@ func (ws *WorkloadStats) IncrementErrors() {
 	ws.Errors++
 }
 
+func (ws *WorkloadStats) IncrementTableLocks() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.TableLocksCreated++
+}
+
+func (ws *WorkloadStats) IncrementCommitContentions() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.CommitContentions++
+}
+
+func (ws *WorkloadStats) IncrementBufferBusy() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.BufferBusyEvents++
+}
+
+func (ws *WorkloadStats) IncrementSequenceContentions() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.SequenceContentions++
+}
+
+func (ws *WorkloadStats) IncrementIndexContentions() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.IndexContentions++
+}
+
+func (ws *WorkloadStats) IncrementTempSegmentWaits() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.TempSegmentWaits++
+}
+
 func (ws *WorkloadStats) Print() {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -95,6 +147,12 @@ func (ws *WorkloadStats) Print() {
 	fmt.Printf("I/O Intensive Queries:    %d\n", ws.IOQueriesRun)
 	fmt.Printf("Child Cursors Generated:  %d\n", ws.ChildCursorsCreated)
 	fmt.Printf("Wait Events Generated:    %d\n", ws.WaitEventsGenerated)
+	fmt.Printf("Table Locks Created:      %d\n", ws.TableLocksCreated)
+	fmt.Printf("Commit Contentions:       %d\n", ws.CommitContentions)
+	fmt.Printf("Buffer Busy Events:       %d\n", ws.BufferBusyEvents)
+	fmt.Printf("Sequence Contentions:     %d\n", ws.SequenceContentions)
+	fmt.Printf("Index Contentions:        %d\n", ws.IndexContentions)
+	fmt.Printf("Temp Segment Waits:       %d\n", ws.TempSegmentWaits)
 	fmt.Printf("Errors:                   %d\n", ws.Errors)
 	fmt.Printf("===========================\n\n")
 }
@@ -111,6 +169,14 @@ func main() {
 		ioWorkers     = flag.Int("io-workers", 2, "Number of I/O intensive workers")
 		childWorkers  = flag.Int("child-workers", 2, "Number of child cursor workers")
 		concurrency   = flag.Int("concurrency-workers", 2, "Number of concurrency wait workers")
+
+		// New Oracle-specific scenario workers
+		tableLockWorkers  = flag.Int("table-lock-workers", 0, "Number of table lock workers (enq: TM)")
+		commitWorkers     = flag.Int("commit-workers", 0, "Number of commit contention workers (log file sync)")
+		bufferBusyWorkers = flag.Int("buffer-busy-workers", 0, "Number of buffer busy workers")
+		sequenceWorkers   = flag.Int("sequence-workers", 0, "Number of sequence contention workers (enq: SQ)")
+		indexWorkers      = flag.Int("index-workers", 0, "Number of index contention workers")
+		tempWorkers       = flag.Int("temp-workers", 0, "Number of temp segment I/O workers")
 	)
 	flag.Parse()
 
@@ -121,24 +187,33 @@ func main() {
 	}
 
 	config := Config{
-		User:               *user,
-		Password:           *password,
-		ConnectString:      *connectString,
-		Duration:           *duration,
-		SlowQueryWorkers:   *slowWorkers,
-		BlockingWorkers:    *blockWorkers,
-		IOWorkers:          *ioWorkers,
-		ChildCursorWorkers: *childWorkers,
-		ConcurrencyWorkers: *concurrency,
+		User:                   *user,
+		Password:               *password,
+		ConnectString:          *connectString,
+		Duration:               *duration,
+		SlowQueryWorkers:       *slowWorkers,
+		BlockingWorkers:        *blockWorkers,
+		IOWorkers:              *ioWorkers,
+		ChildCursorWorkers:     *childWorkers,
+		ConcurrencyWorkers:     *concurrency,
+		TableLockWorkers:       *tableLockWorkers,
+		CommitWorkers:          *commitWorkers,
+		BufferBusyWorkers:      *bufferBusyWorkers,
+		SequenceWorkers:        *sequenceWorkers,
+		IndexContentionWorkers: *indexWorkers,
+		TempSegmentWorkers:     *tempWorkers,
 	}
 
-	fmt.Printf("\n=== HR Workload Simulator ===\n")
+	fmt.Printf("\n=== HR Workload Simulator (Enhanced) ===\n")
 	fmt.Printf("Database: %s@%s\n", config.User, config.ConnectString)
 	fmt.Printf("Duration: %v\n", config.Duration)
-	fmt.Printf("Workers: Slow=%d, Blocking=%d, I/O=%d, ChildCursor=%d, Concurrency=%d\n",
+	fmt.Printf("Classic Workers: Slow=%d, Blocking=%d, I/O=%d, ChildCursor=%d, Concurrency=%d\n",
 		config.SlowQueryWorkers, config.BlockingWorkers, config.IOWorkers,
 		config.ChildCursorWorkers, config.ConcurrencyWorkers)
-	fmt.Printf("==============================\n\n")
+	fmt.Printf("Enhanced Workers: TableLock=%d, Commit=%d, BufferBusy=%d, Sequence=%d, Index=%d, Temp=%d\n",
+		config.TableLockWorkers, config.CommitWorkers, config.BufferBusyWorkers,
+		config.SequenceWorkers, config.IndexContentionWorkers, config.TempSegmentWorkers)
+	fmt.Printf("========================================\n\n")
 
 	// Create database connection pool
 	dsn := fmt.Sprintf("%s/%s@%s", config.User, config.Password, config.ConnectString)
@@ -210,6 +285,42 @@ func main() {
 	for i := 0; i < config.ConcurrencyWorkers; i++ {
 		wg.Add(1)
 		go concurrencyWorker(ctx, &wg, db, i, stats)
+	}
+
+	// 6. Table Lock Workers - Generate enq: TM table lock contention
+	for i := 0; i < config.TableLockWorkers; i++ {
+		wg.Add(1)
+		go tableLockWorker(ctx, &wg, db, i, stats)
+	}
+
+	// 7. Commit Contention Workers - Generate log file sync waits
+	for i := 0; i < config.CommitWorkers; i++ {
+		wg.Add(1)
+		go commitContentionWorker(ctx, &wg, db, i, stats)
+	}
+
+	// 8. Buffer Busy Workers - Generate buffer busy waits
+	for i := 0; i < config.BufferBusyWorkers; i++ {
+		wg.Add(1)
+		go bufferBusyWorker(ctx, &wg, db, i, stats)
+	}
+
+	// 9. Sequence Workers - Generate enq: SQ sequence contention
+	for i := 0; i < config.SequenceWorkers; i++ {
+		wg.Add(1)
+		go sequenceWorker(ctx, &wg, db, i, stats)
+	}
+
+	// 10. Index Contention Workers - Generate index range lock contention
+	for i := 0; i < config.IndexContentionWorkers; i++ {
+		wg.Add(1)
+		go indexContentionWorker(ctx, &wg, db, i, stats)
+	}
+
+	// 11. Temp Segment Workers - Generate direct path temp I/O waits
+	for i := 0; i < config.TempSegmentWorkers; i++ {
+		wg.Add(1)
+		go tempSegmentWorker(ctx, &wg, db, i, stats)
 	}
 
 	// Statistics reporter
@@ -636,6 +747,466 @@ func statsReporter(ctx context.Context, wg *sync.WaitGroup, stats *WorkloadStats
 			return
 		case <-ticker.C:
 			stats.Print()
+		}
+	}
+}
+
+// tableLockWorker creates table-level lock contention (enq: TM)
+func tableLockWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerID int, stats *WorkloadStats) {
+	defer wg.Done()
+	log.Printf("[TableLock-%d] Started", workerID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[TableLock-%d] Stopped", workerID)
+			return
+		default:
+			if err := createTableLockScenario(ctx, db, workerID, stats); err != nil {
+				log.Printf("[TableLock-%d] Error: %v", workerID, err)
+				stats.IncrementErrors()
+			}
+
+			// Wait before next table lock scenario
+			time.Sleep(time.Duration(15+rand.Intn(15)) * time.Second)
+		}
+	}
+}
+
+// createTableLockScenario creates table-level lock contention
+func createTableLockScenario(ctx context.Context, db *sql.DB, workerID int, stats *WorkloadStats) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
+
+	// Session 1: Lock entire table
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			errChan <- fmt.Errorf("table locker: failed to get connection: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			errChan <- fmt.Errorf("table locker: failed to begin transaction: %v", err)
+			return
+		}
+		defer tx.Rollback()
+
+		// Lock entire table in EXCLUSIVE mode
+		_, err = tx.ExecContext(ctx, "LOCK TABLE employees IN EXCLUSIVE MODE NOWAIT")
+		if err != nil {
+			errChan <- fmt.Errorf("table locker: failed to lock table: %v", err)
+			return
+		}
+
+		log.Printf("[TableLock-%d] 🔒 Session 1 locked EMPLOYEES table (EXCLUSIVE mode)", workerID)
+		stats.IncrementWaitEvents()
+
+		// Hold table lock for 10-15 seconds
+		holdTime := time.Duration(10+rand.Intn(6)) * time.Second
+		time.Sleep(holdTime)
+
+		log.Printf("[TableLock-%d] 🔓 Session 1 releasing table lock after %v", workerID, holdTime)
+	}()
+
+	// Session 2: Try to update table (will wait for TM enqueue)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		// Wait for session 1 to acquire table lock
+		time.Sleep(2 * time.Second)
+
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			errChan <- fmt.Errorf("blocked updater: failed to get connection: %v", err)
+			return
+		}
+		defer conn.Close()
+
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			errChan <- fmt.Errorf("blocked updater: failed to begin transaction: %v", err)
+			return
+		}
+		defer tx.Rollback()
+
+		log.Printf("[TableLock-%d] ⏳ Session 2 attempting UPDATE on EMPLOYEES (will block on TM enqueue)...", workerID)
+
+		start := time.Now()
+		_, err = tx.ExecContext(ctx, "UPDATE employees SET salary = salary + 1 WHERE employee_id = 100")
+		waitTime := time.Since(start)
+
+		if err != nil {
+			errChan <- fmt.Errorf("blocked updater: failed to update: %v", err)
+			return
+		}
+
+		log.Printf("[TableLock-%d] ✅ Session 2 acquired TM lock and completed UPDATE after waiting %v", workerID, waitTime)
+		stats.IncrementTableLocks()
+	}()
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// commitContentionWorker creates commit contention (log file sync waits)
+func commitContentionWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerID int, stats *WorkloadStats) {
+	defer wg.Done()
+	log.Printf("[CommitContention-%d] Started", workerID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[CommitContention-%d] Stopped", workerID)
+			return
+		default:
+			// High-frequency commits create log file sync waits
+			conn, err := db.Conn(ctx)
+			if err != nil {
+				log.Printf("[CommitContention-%d] Error getting connection: %v", workerID, err)
+				stats.IncrementErrors()
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			commitCount := 0
+			for i := 0; i < 50; i++ {
+				tx, err := conn.BeginTx(ctx, nil)
+				if err != nil {
+					log.Printf("[CommitContention-%d] Error beginning tx: %v", workerID, err)
+					break
+				}
+
+				// Small update
+				_, err = tx.ExecContext(ctx, "UPDATE employees SET salary = salary + 1 WHERE employee_id = :1", 100+rand.Intn(10))
+				if err != nil {
+					tx.Rollback()
+					log.Printf("[CommitContention-%d] Error updating: %v", workerID, err)
+					break
+				}
+
+				// Commit immediately - creates log file sync waits
+				if err := tx.Commit(); err != nil {
+					log.Printf("[CommitContention-%d] Error committing: %v", workerID, err)
+					break
+				}
+
+				commitCount++
+				stats.IncrementCommitContentions()
+
+				// Very short delay between commits
+				time.Sleep(10 * time.Millisecond)
+			}
+
+			conn.Close()
+			log.Printf("[CommitContention-%d] Completed %d rapid commits", workerID, commitCount)
+
+			// Wait before next burst
+			time.Sleep(time.Duration(3+rand.Intn(5)) * time.Second)
+		}
+	}
+}
+
+// bufferBusyWorker creates buffer busy waits
+func bufferBusyWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerID int, stats *WorkloadStats) {
+	defer wg.Done()
+	log.Printf("[BufferBusy-%d] Started", workerID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[BufferBusy-%d] Stopped", workerID)
+			return
+		default:
+			// Multiple sessions updating consecutive rows in same block creates buffer busy waits
+			var innerWg sync.WaitGroup
+			baseEmpID := 100 + rand.Intn(10)
+
+			for i := 0; i < 3; i++ {
+				innerWg.Add(1)
+				go func(offset int) {
+					defer innerWg.Done()
+
+					conn, err := db.Conn(ctx)
+					if err != nil {
+						return
+					}
+					defer conn.Close()
+
+					tx, err := conn.BeginTx(ctx, nil)
+					if err != nil {
+						return
+					}
+					defer tx.Rollback()
+
+					// Update consecutive employee IDs (likely in same data block)
+					empID := baseEmpID + offset
+					_, err = tx.ExecContext(ctx, "UPDATE employees SET salary = salary + 1 WHERE employee_id = :1", empID)
+					if err != nil {
+						return
+					}
+
+					// Hold briefly to create contention
+					time.Sleep(time.Duration(500+rand.Intn(500)) * time.Millisecond)
+
+					tx.Commit()
+					stats.IncrementBufferBusy()
+				}(i)
+			}
+
+			innerWg.Wait()
+			log.Printf("[BufferBusy-%d] Created buffer contention on block containing employees %d-%d", workerID, baseEmpID, baseEmpID+2)
+
+			time.Sleep(time.Duration(2+rand.Intn(4)) * time.Second)
+		}
+	}
+}
+
+// sequenceWorker creates sequence contention (enq: SQ)
+func sequenceWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerID int, stats *WorkloadStats) {
+	defer wg.Done()
+	log.Printf("[Sequence-%d] Started", workerID)
+
+	// Try to create sequence if it doesn't exist
+	_, err := db.ExecContext(ctx, "CREATE SEQUENCE employee_seq START WITH 1000 INCREMENT BY 1 CACHE 20")
+	if err != nil {
+		// Sequence might already exist, that's okay
+		log.Printf("[Sequence-%d] Note: Sequence may already exist (error: %v)", workerID, err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[Sequence-%d] Stopped", workerID)
+			return
+		default:
+			// Rapid NEXTVAL calls create sequence contention
+			successCount := 0
+			for i := 0; i < 20; i++ {
+				var nextVal int64
+				err := db.QueryRowContext(ctx, "SELECT employee_seq.NEXTVAL FROM DUAL").Scan(&nextVal)
+				if err != nil {
+					log.Printf("[Sequence-%d] Error getting NEXTVAL: %v", workerID, err)
+					stats.IncrementErrors()
+					break
+				}
+				successCount++
+				stats.IncrementSequenceContentions()
+
+				// Very short delay to create contention
+				time.Sleep(5 * time.Millisecond)
+			}
+
+			log.Printf("[Sequence-%d] Retrieved %d sequence values", workerID, successCount)
+			time.Sleep(time.Duration(1+rand.Intn(3)) * time.Second)
+		}
+	}
+}
+
+// indexContentionWorker creates index range lock contention
+func indexContentionWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerID int, stats *WorkloadStats) {
+	defer wg.Done()
+	log.Printf("[IndexContention-%d] Started", workerID)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[IndexContention-%d] Stopped", workerID)
+			return
+		default:
+			if err := createIndexContentionScenario(ctx, db, workerID, stats); err != nil {
+				log.Printf("[IndexContention-%d] Error: %v", workerID, err)
+				stats.IncrementErrors()
+			}
+
+			time.Sleep(time.Duration(8+rand.Intn(8)) * time.Second)
+		}
+	}
+}
+
+// createIndexContentionScenario creates overlapping index range locks
+func createIndexContentionScenario(ctx context.Context, db *sql.DB, workerID int, stats *WorkloadStats) error {
+	var wg sync.WaitGroup
+	errChan := make(chan error, 2)
+
+	baseEmpID := 100 + rand.Intn(20)
+
+	// Session 1: Lock range 100-115
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer conn.Close()
+
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer tx.Rollback()
+
+		rows, err := tx.QueryContext(ctx,
+			"SELECT employee_id, salary FROM employees WHERE employee_id BETWEEN :1 AND :2 FOR UPDATE",
+			baseEmpID, baseEmpID+15)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		count := 0
+		for rows.Next() {
+			count++
+		}
+		rows.Close()
+
+		log.Printf("[IndexContention-%d] 🔒 Session 1 locked range [%d-%d] (%d rows)",
+			workerID, baseEmpID, baseEmpID+15, count)
+
+		// Hold range lock
+		time.Sleep(time.Duration(6+rand.Intn(4)) * time.Second)
+
+		log.Printf("[IndexContention-%d] 🔓 Session 1 releasing range lock", workerID)
+	}()
+
+	// Session 2: Try to lock overlapping range 110-125 (will block)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		time.Sleep(1 * time.Second)
+
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer conn.Close()
+
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		defer tx.Rollback()
+
+		log.Printf("[IndexContention-%d] ⏳ Session 2 attempting overlapping range [%d-%d] (will block)...",
+			workerID, baseEmpID+10, baseEmpID+25)
+
+		start := time.Now()
+		rows, err := tx.QueryContext(ctx,
+			"SELECT employee_id, salary FROM employees WHERE employee_id BETWEEN :1 AND :2 FOR UPDATE",
+			baseEmpID+10, baseEmpID+25)
+		waitTime := time.Since(start)
+
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		count := 0
+		for rows.Next() {
+			count++
+		}
+		rows.Close()
+
+		log.Printf("[IndexContention-%d] ✅ Session 2 acquired overlapping range lock after %v (%d rows)",
+			workerID, waitTime, count)
+		stats.IncrementIndexContentions()
+	}()
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// tempSegmentWorker creates temporary segment I/O waits
+func tempSegmentWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, workerID int, stats *WorkloadStats) {
+	defer wg.Done()
+	log.Printf("[TempSegment-%d] Started", workerID)
+
+	queries := []string{
+		// Large Cartesian product requiring temp space
+		`SELECT /*+ USE_HASH(e1 e2) NO_INDEX(e1) NO_INDEX(e2) */ 
+		 e1.employee_id, e1.first_name, e2.employee_id, e2.last_name
+		 FROM employees e1, employees e2
+		 WHERE e1.salary < e2.salary
+		 ORDER BY e1.salary DESC, e2.salary DESC`,
+
+		// Large sort requiring temp space
+		`SELECT /*+ FULL(e) NO_INDEX(e) */ 
+		 e.*, 
+		 DENSE_RANK() OVER (ORDER BY salary DESC) as rank1,
+		 DENSE_RANK() OVER (ORDER BY hire_date) as rank2,
+		 DENSE_RANK() OVER (ORDER BY last_name) as rank3
+		 FROM employees e
+		 ORDER BY salary DESC, hire_date, last_name`,
+
+		// Hash join requiring temp space
+		`SELECT /*+ USE_HASH(e1 e2 e3) FULL(e1) FULL(e2) FULL(e3) */
+		 e1.employee_id, e1.first_name,
+		 e2.first_name as manager_name,
+		 e3.first_name as director_name
+		 FROM employees e1
+		 LEFT JOIN employees e2 ON e1.manager_id = e2.employee_id
+		 LEFT JOIN employees e3 ON e2.manager_id = e3.employee_id
+		 ORDER BY e1.salary DESC, e2.salary DESC, e3.salary DESC`,
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[TempSegment-%d] Stopped", workerID)
+			return
+		default:
+			query := queries[rand.Intn(len(queries))]
+
+			start := time.Now()
+			rows, err := db.QueryContext(ctx, query)
+			if err != nil {
+				log.Printf("[TempSegment-%d] Error: %v", workerID, err)
+				stats.IncrementErrors()
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			rowCount := 0
+			for rows.Next() {
+				rowCount++
+			}
+			rows.Close()
+
+			elapsed := time.Since(start)
+			log.Printf("[TempSegment-%d] Temp I/O query executed in %v (%d rows)", workerID, elapsed, rowCount)
+			stats.IncrementTempSegmentWaits()
+
+			// Longer delay between temp-intensive queries
+			time.Sleep(time.Duration(5+rand.Intn(10)) * time.Second)
 		}
 	}
 }

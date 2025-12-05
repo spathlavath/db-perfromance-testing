@@ -128,18 +128,22 @@ ${YELLOW}Commands:${NC}
   light              Run with light load (5 min, 1 worker each)
   medium             Run with medium load (15 min, 2-3 workers)
   heavy              Run with heavy load (30 min, 4-5 workers)
+  locks              Run lock-focused workload (SQL Server equivalency test)
+  comprehensive      Run all 11 worker types (20 min, complete coverage)
   custom             Run with custom parameters
   help               Show this help message
 
 ${YELLOW}Examples:${NC}
   $0 build           # Build the simulator
   $0 run             # Quick 5-minute test
-  $0 light           # Light load for 5 minutes
+  $0 light           # Light load for 5 minutes (all 11 worker types)
   $0 medium          # Medium load for 15 minutes
   $0 heavy           # Heavy stress test for 30 minutes
+  $0 locks           # SQL Server lock equivalency test (KEY, OBJECT, PAGE)
+  $0 comprehensive   # Complete Oracle wait event coverage
   
-  # Custom run
-  $0 custom -duration 10m -slow-workers 3 -block-workers 4
+  # Custom run with specific workers
+  $0 custom -duration 10m -slow-workers 3 -block-workers 4 -commit-workers 2
 
 ${YELLOW}Environment Variables (set in .env):${NC}
   ORACLE_USER              Oracle username (default: hr)
@@ -192,7 +196,7 @@ case "${1:-}" in
         test_connection
         
         print_info "Starting simulator with LIGHT load (5 minutes)..."
-        print_info "Workers: 1 of each type"
+        print_info "Workers: 1 of each type (11 worker types)"
         print_info "Press Ctrl+C to stop\n"
         
         ./"$BINARY" \
@@ -204,7 +208,13 @@ case "${1:-}" in
             -block-workers 1 \
             -io-workers 1 \
             -child-workers 1 \
-            -concurrency-workers 1
+            -concurrency-workers 1 \
+            -table-lock-workers 1 \
+            -commit-workers 1 \
+            -buffer-busy-workers 1 \
+            -sequence-workers 1 \
+            -index-workers 1 \
+            -temp-workers 1
         ;;
     
     medium)
@@ -215,7 +225,7 @@ case "${1:-}" in
         test_connection
         
         print_info "Starting simulator with MEDIUM load (15 minutes)..."
-        print_info "Workers: 2-3 of each type"
+        print_info "Workers: 2-3 of each type (11 worker types)"
         print_info "Press Ctrl+C to stop\n"
         
         ./"$BINARY" \
@@ -227,7 +237,13 @@ case "${1:-}" in
             -block-workers 3 \
             -io-workers 2 \
             -child-workers 2 \
-            -concurrency-workers 2
+            -concurrency-workers 2 \
+            -table-lock-workers 2 \
+            -commit-workers 3 \
+            -buffer-busy-workers 2 \
+            -sequence-workers 2 \
+            -index-workers 2 \
+            -temp-workers 1
         ;;
     
     heavy)
@@ -239,7 +255,7 @@ case "${1:-}" in
         
         print_warning "Starting simulator with HEAVY load (30 minutes)..."
         print_warning "This will create significant database load!"
-        print_info "Workers: 4-5 of each type"
+        print_info "Workers: 4-5 of each type (11 worker types)"
         print_info "Press Ctrl+C to stop\n"
         
         read -p "Continue? (y/N) " -n 1 -r
@@ -258,7 +274,80 @@ case "${1:-}" in
             -block-workers 5 \
             -io-workers 4 \
             -child-workers 3 \
-            -concurrency-workers 4
+            -concurrency-workers 4 \
+            -table-lock-workers 3 \
+            -commit-workers 5 \
+            -buffer-busy-workers 4 \
+            -sequence-workers 3 \
+            -index-workers 3 \
+            -temp-workers 2
+        ;;
+    
+    locks)
+        check_prerequisites
+        if [ ! -f "$BINARY" ]; then
+            build_simulator
+        fi
+        test_connection
+        
+        print_info "Starting simulator with LOCK-FOCUSED workload (10 minutes)..."
+        print_info "SQL Server Lock Type Equivalency Test"
+        print_info "  • Row Locks (KEY)     → enq: TX row locks"
+        print_info "  • Table Locks (OBJECT) → enq: TM table locks"
+        print_info "  • Block Locks (PAGE)   → buffer busy waits"
+        print_info "  • Range Locks (KEY)    → enq: TX index locks"
+        print_info "Press Ctrl+C to stop\n"
+        
+        ./"$BINARY" \
+            -user "${ORACLE_USER:-hr}" \
+            -password "$ORACLE_PASSWORD" \
+            -connect "$ORACLE_CONNECT_STRING" \
+            -duration 10m \
+            -slow-workers 0 \
+            -block-workers 3 \
+            -io-workers 0 \
+            -child-workers 0 \
+            -concurrency-workers 0 \
+            -table-lock-workers 2 \
+            -commit-workers 0 \
+            -buffer-busy-workers 2 \
+            -sequence-workers 0 \
+            -index-workers 2 \
+            -temp-workers 0
+        ;;
+    
+    comprehensive)
+        check_prerequisites
+        if [ ! -f "$BINARY" ]; then
+            build_simulator
+        fi
+        test_connection
+        
+        print_info "Starting simulator with COMPREHENSIVE workload (20 minutes)..."
+        print_info "All 11 worker types generating all Oracle wait event classes"
+        print_info "  • Application waits (enq: TM, SQ)"
+        print_info "  • Concurrency waits (enq: TX, latch, buffer busy)"
+        print_info "  • Commit waits (log file sync)"
+        print_info "  • User I/O waits (db file, temp)"
+        print_info "  • CPU intensive queries"
+        print_info "Press Ctrl+C to stop\n"
+        
+        ./"$BINARY" \
+            -user "${ORACLE_USER:-hr}" \
+            -password "$ORACLE_PASSWORD" \
+            -connect "$ORACLE_CONNECT_STRING" \
+            -duration 20m \
+            -slow-workers 2 \
+            -block-workers 3 \
+            -io-workers 2 \
+            -child-workers 2 \
+            -concurrency-workers 2 \
+            -table-lock-workers 2 \
+            -commit-workers 3 \
+            -buffer-busy-workers 2 \
+            -sequence-workers 2 \
+            -index-workers 2 \
+            -temp-workers 1
         ;;
     
     custom)
