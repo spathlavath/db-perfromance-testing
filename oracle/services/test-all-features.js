@@ -8,12 +8,14 @@ const transactionWorkload = require('./workloads/transaction-workload');
 const connectionWorkload = require('./workloads/connection-workload');
 const lockWorkload = require('./workloads/lock-workload'); // Re-enabled with fixes
 const blockingSessionsWorkload = require('./workloads/blocking-sessions-workload'); // NEW: For wait events & blocking monitoring
+const complexQueryWorkload = require('./workloads/complex-query-workload'); // NEW: Complex multi-join queries for wait events
+const planRegressionWorkload = require('./workloads/plan-regression-workload'); // NEW: Query plan regression scenarios
 const memoryWorkload = require('./workloads/memory-workload');
 
-async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
+async function runAllTests(pool, logger, duration = 600, intensity = 'low') {
   logger.info('========================================');
   logger.info('Starting comprehensive Oracle DB test suite');
-  logger.info(`Duration: ${duration} seconds, Intensity: ${intensity}`);
+  logger.info(`Duration: ${duration} seconds, Intensity: ${intensity} (changed to LOW to prevent pool exhaustion)`);
   logger.info('========================================');
   
   try {
@@ -52,6 +54,13 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     logger.info('   - Buffer cache hit ratio');
     logger.info('   - Sort/hash area usage');
     logger.info('   - Temporary space');
+    logger.info('');
+    logger.info('7. Query Plan Regression Scenarios (NEW!)');
+    logger.info('   - Statistics going stale → Plan changes');
+    logger.info('   - Bind variable peeking issues');
+    logger.info('   - Same SQL_ID, different PLAN_HASH_VALUE');
+    logger.info('   - Data growth causing performance degradation');
+    logger.info('   - Join order regressions');
     logger.info('========================================\n');
     
     // Get initial pool statistics
@@ -70,11 +79,19 @@ async function runAllTests(pool, logger, duration = 600, intensity = 'medium') {
     connectionWorkload.start(pool, logger, duration, intensity);
     await sleep(2000);
 
+    // CRITICAL: Complex query workload - Long-running queries with various wait events
+    complexQueryWorkload.start(pool, logger, duration, intensity);
+    await sleep(2000);
+
     // CRITICAL: Blocking sessions workload - Creates ACTIVE waiting sessions for receiver monitoring
     blockingSessionsWorkload.start(pool, logger, duration, intensity);
     await sleep(2000);
 
     lockWorkload.start(pool, logger, duration, intensity);
+    await sleep(2000);
+
+    // CRITICAL: Plan regression workload - Tests real-world query performance degradation
+    planRegressionWorkload.start(pool, logger, duration, intensity);
     await sleep(2000);
 
     memoryWorkload.start(pool, logger, duration, intensity);
