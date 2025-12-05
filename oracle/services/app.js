@@ -121,10 +121,29 @@ app.use(express.json());
 // Request logging middleware
 app.use((req, res, next) => {
   const start = Date.now();
+  
+  // Log incoming request immediately
+  const logParts = [`🌐 ${req.method} ${req.path}`];
+  
+  // Add query params if present
+  if (Object.keys(req.query).length > 0) {
+    logParts.push(`Query: ${JSON.stringify(req.query)}`);
+  }
+  
+  // Add body for POST/PUT if present
+  if ((req.method === 'POST' || req.method === 'PUT') && req.body && Object.keys(req.body).length > 0) {
+    logParts.push(`Body: ${JSON.stringify(req.body)}`);
+  }
+  
+  logger.info(logParts.join(' | '));
+  
+  // Log response when complete
   res.on('finish', () => {
     const duration = Date.now() - start;
-    logger.info(`${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+    const statusEmoji = res.statusCode < 400 ? '✅' : '❌';
+    logger.info(`${statusEmoji} ${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
   });
+  
   next();
 });
 
