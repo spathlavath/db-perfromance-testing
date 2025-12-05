@@ -638,13 +638,206 @@ app.post('/workload/session', async (req, res) => {
   }
 });
 
-// Wait events workload - stimulates wait event metrics
+// Wait events workload - stimulates general wait event metrics
 app.post('/workload/wait', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     await connection.execute('SELECT /*+ FULL(e1) FULL(e2) */ e1.*, e2.* FROM employees e1, employees e2 WHERE e1.salary = e2.salary');
     res.json({ message: 'Wait events workload completed' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// DB file sequential read - stimulates index/rowid lookups
+app.post('/workload/wait/db-file-seq-read', async (req, res) => {
+  const { iterations = 50 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute('SELECT * FROM employees WHERE employee_id = :id', [100 + i]);
+      await connection.execute('SELECT * FROM departments WHERE department_id = :id', [10 + (i % 10)]);
+    }
+    res.json({ message: 'DB file sequential read workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// DB file scattered read - stimulates full table/index scans
+app.post('/workload/wait/db-file-scattered-read', async (req, res) => {
+  const { iterations = 20 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute('SELECT /*+ FULL(e) */ * FROM employees e WHERE salary > :sal', [5000 + (i * 100)]);
+      await connection.execute('SELECT /*+ FULL(d) */ * FROM departments d');
+    }
+    res.json({ message: 'DB file scattered read workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Log file sync - stimulates commit waits
+app.post('/workload/wait/log-file-sync', async (req, res) => {
+  const { iterations = 30 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute(
+        'UPDATE employees SET salary = salary + :inc WHERE employee_id = :id',
+        [0.01, 100 + (i % 10)],
+        { autoCommit: true }
+      );
+    }
+    res.json({ message: 'Log file sync workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Latch free - stimulates latch contention
+app.post('/workload/wait/latch-free', async (req, res) => {
+  const { iterations = 100 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    // Rapid SQL parsing causes latch contention
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute(`SELECT /* Query_${i} */ * FROM employees WHERE employee_id = ${100 + (i % 50)}`);
+    }
+    res.json({ message: 'Latch free workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Buffer busy waits - stimulates buffer contention
+app.post('/workload/wait/buffer-busy', async (req, res) => {
+  const { iterations = 40 } = req.body;
+  const connections = [];
+  try {
+    // Multiple sessions hitting same blocks
+    for (let i = 0; i < 5; i++) {
+      const conn = await pool.getConnection();
+      connections.push(conn);
+      
+      // All sessions update different rows in same table
+      for (let j = 0; j < iterations / 5; j++) {
+        await conn.execute(
+          'UPDATE employees SET salary = salary + :inc WHERE employee_id = :id',
+          [0.01, 100 + (i * 10) + j],
+          { autoCommit: true }
+        );
+      }
+    }
+    res.json({ message: 'Buffer busy waits workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    for (const conn of connections) {
+      await conn.close();
+    }
+  }
+});
+
+// Direct path read/write - stimulates direct I/O operations
+app.post('/workload/wait/direct-path', async (req, res) => {
+  const { iterations = 10 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      // Large sorts that spill to temp
+      await connection.execute(`
+        SELECT /*+ FULL(e1) FULL(e2) */ e1.*, e2.*
+        FROM employees e1, employees e2
+        ORDER BY e1.salary, e2.hire_date, e1.employee_id
+      `);
+    }
+    res.json({ message: 'Direct path read/write workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Library cache lock/pin - stimulates library cache waits
+app.post('/workload/wait/library-cache', async (req, res) => {
+  const { iterations = 50 } = req.body;
+  const connections = [];
+  try {
+    // Multiple sessions parsing similar queries
+    for (let i = 0; i < 3; i++) {
+      const conn = await pool.getConnection();
+      connections.push(conn);
+      
+      for (let j = 0; j < iterations / 3; j++) {
+        await conn.execute(`
+          SELECT /* LibCache_${i}_${j} */ e.*, d.department_name
+          FROM employees e 
+          JOIN departments d ON e.department_id = d.department_id
+          WHERE e.salary > ${5000 + j * 100}
+        `);
+      }
+    }
+    res.json({ message: 'Library cache lock/pin workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    for (const conn of connections) {
+      await conn.close();
+    }
+  }
+});
+
+// SQL*Net message waits - stimulates network roundtrips
+app.post('/workload/wait/sqlnet-message', async (req, res) => {
+  const { iterations = 100 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    // Many small queries = many network roundtrips
+    for (let i = 0; i < iterations; i++) {
+      await connection.execute('SELECT 1 FROM DUAL');
+    }
+    res.json({ message: 'SQL*Net message workload completed', iterations });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Row cache lock - stimulates data dictionary cache waits
+app.post('/workload/wait/row-cache-lock', async (req, res) => {
+  const { iterations = 30 } = req.body;
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    for (let i = 0; i < iterations; i++) {
+      // Query data dictionary views
+      await connection.execute('SELECT COUNT(*) FROM user_tables');
+      await connection.execute('SELECT COUNT(*) FROM user_indexes');
+      await connection.execute('SELECT COUNT(*) FROM user_constraints');
+    }
+    res.json({ message: 'Row cache lock workload completed', iterations });
   } catch (err) {
     res.status(500).json({ error: err.message });
   } finally {

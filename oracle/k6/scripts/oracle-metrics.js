@@ -59,7 +59,7 @@ export function setup() {
 }
 
 export default function() {
-  const workload = Math.floor(Math.random() * 24);
+  const workload = Math.floor(Math.random() * 33);
   
   switch (workload) {
     case 0:
@@ -154,60 +154,114 @@ export default function() {
       break;
       
     case 14:
-      // Wait events - heavy
+      // General wait events - heavy
       post('/workload/wait');
       sleep(0.5);
       break;
       
     case 15:
+      // DB file sequential read - fast
+      post('/workload/wait/db-file-seq-read', { iterations: 50 });
+      sleep(0.3);
+      break;
+      
+    case 16:
+      // DB file scattered read - moderate
+      post('/workload/wait/db-file-scattered-read', { iterations: 20 });
+      sleep(0.5);
+      break;
+      
+    case 17:
+      // Log file sync - moderate
+      post('/workload/wait/log-file-sync', { iterations: 30 });
+      sleep(0.5);
+      break;
+      
+    case 18:
+      // Latch free - intense
+      post('/workload/wait/latch-free', { iterations: 100 });
+      sleep(0.5);
+      break;
+      
+    case 19:
+      // Buffer busy waits - moderate
+      post('/workload/wait/buffer-busy', { iterations: 40 });
+      sleep(0.5);
+      break;
+      
+    case 20:
+      // Direct path read/write - heavy
+      post('/workload/wait/direct-path', { iterations: 10 });
+      sleep(1);
+      break;
+      
+    case 21:
+      // Library cache lock/pin - moderate
+      post('/workload/wait/library-cache', { iterations: 50 });
+      sleep(0.5);
+      break;
+      
+    case 22:
+      // SQL*Net message - fast
+      post('/workload/wait/sqlnet-message', { iterations: 100 });
+      sleep(0.3);
+      break;
+      
+    case 23:
+      // Row cache lock - moderate
+      post('/workload/wait/row-cache-lock', { iterations: 30 });
+      sleep(0.3);
+      break;
+      
+    case 24:
       // Comprehensive mix - intense
       post('/workload/comprehensive', { intensity: 'high' });
       sleep(0.5);
       break;
       
-    case 16:
+    case 25:
       // Lock contention - moderate (don't overdo)
       post('/workload/lock', { duration: 2 });
       sleep(2.5);
       break;
       
-    case 17:
+    case 26:
       // PDB metrics - intense
       post('/workload/pdb', { operations: 50 });
       sleep(0.5);
       break;
       
-    case 18:
+    case 27:
       // Parallel execution - heavy
       post('/workload/parallel', { degree: 8 });
       sleep(0.5);
       break;
       
-    case 19:
+    case 28:
       // Network traffic - moderate
       post('/workload/network', { iterations: 30 });
       sleep(0.5);
       break;
       
-    case 20:
+    case 29:
       // Consistent read - heavy
       post('/workload/consistent-read', { iterations: 30 });
       sleep(1);
       break;
       
-    case 21:
+    case 30:
       // Block changes - intense
       post('/workload/block-change', { operations: 100 });
       sleep(0.5);
       break;
       
-    case 22:
+    case 31:
       // Enqueue operations
       post('/workload/enqueue', { iterations: 25 });
       sleep(0.5);
       break;
       
-    case 23:
+    case 32:
       // Mixed HR operations - fast
       get('/departments');
       sleep(0.05);

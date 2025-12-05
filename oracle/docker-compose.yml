@@ -69,8 +69,8 @@ services:
         condition: service_healthy
     networks:
       - oracle-network
-    # Runs both HR portal load test and Oracle metrics stimulation
-    command: sh -c "k6 run /scripts/hr-portal-load-test.js && k6 run /scripts/oracle-metrics.js"
+    # Stimulates all Oracle metrics including wait events
+    command: run /scripts/oracle-metrics.js
 
 networks:
   oracle-network:
