@@ -128,8 +128,10 @@ ${YELLOW}Commands:${NC}
   light              Run with light load (5 min, 1 worker each)
   medium             Run with medium load (15 min, 2-3 workers)
   heavy              Run with heavy load (30 min, 4-5 workers)
+  cpu                Run CPU-intensive workload (complex queries only)
   locks              Run lock-focused workload (SQL Server equivalency test)
   comprehensive      Run all 11 worker types (20 min, complete coverage)
+  metrics            Run with scheduled metrics burst enabled (recommended)
   custom             Run with custom parameters
   help               Show this help message
 
@@ -139,11 +141,13 @@ ${YELLOW}Examples:${NC}
   $0 light           # Light load for 5 minutes (all 11 worker types)
   $0 medium          # Medium load for 15 minutes
   $0 heavy           # Heavy stress test for 30 minutes
+  $0 cpu             # CPU-intensive queries with complex joins and analytics
   $0 locks           # SQL Server lock equivalency test (KEY, OBJECT, PAGE)
   $0 comprehensive   # Complete Oracle wait event coverage
-  
+  $0 metrics         # Run with scheduled metrics burst (12 additional scenarios)
+
   # Custom run with specific workers
-  $0 custom -duration 10m -slow-workers 3 -block-workers 4 -commit-workers 2
+  $0 custom -duration 10m -slow-workers 3 -block-workers 4 -commit-workers 2 -enable-metrics
 
 ${YELLOW}Environment Variables (set in .env):${NC}
   ORACLE_USER              Oracle username (default: hr)
@@ -197,6 +201,7 @@ case "${1:-}" in
         
         print_info "Starting simulator with LIGHT load (5 minutes)..."
         print_info "Workers: 1 of each type (11 worker types)"
+        print_info "Note: Use './run-simulator.sh metrics' for scheduled metrics burst"
         print_info "Press Ctrl+C to stop\n"
         
         ./"$BINARY" \
@@ -282,14 +287,59 @@ case "${1:-}" in
             -index-workers 3 \
             -temp-workers 2
         ;;
-    
+
+    cpu)
+        check_prerequisites
+        if [ ! -f "$BINARY" ]; then
+            build_simulator
+        fi
+        test_connection
+
+        print_info "Starting simulator with CPU-INTENSIVE workload (10 minutes)..."
+        print_info "Focus: Complex queries with extreme CPU consumption"
+        print_info "Query Characteristics:"
+        print_info "  • 6-table joins (EMPLOYEES, DEPARTMENTS, JOBS, LOCATIONS, COUNTRIES, REGIONS, JOB_HISTORY)"
+        print_info "  • 10+ window functions (RANK, DENSE_RANK, NTILE, LAG, LEAD, AVG, MAX, MIN)"
+        print_info "  • Multiple subqueries with correlated expressions"
+        print_info "  • Complex CASE statements with nested aggregations"
+        print_info "  • Moving averages over partitioned windows"
+        print_info "  • Full table scans with hash joins"
+        print_info "  • GROUP BY with HAVING clauses"
+        print_info "  • Multiple ORDER BY with complex expressions"
+        print_info ""
+        print_info "This generates:"
+        print_info "  ✓ High CPU utilization (70-90%)"
+        print_info "  ✓ Parse time intensive operations"
+        print_info "  ✓ PGA memory pressure from sorting/hashing"
+        print_info "  ✓ Temp tablespace usage for intermediate results"
+        print_info "  ✓ Long-running queries in v\$sql"
+        print_info "Press Ctrl+C to stop\n"
+
+        ./"$BINARY" \
+            -user "${ORACLE_USER:-hr}" \
+            -password "$ORACLE_PASSWORD" \
+            -connect "$ORACLE_CONNECT_STRING" \
+            -duration 10m \
+            -slow-workers 5 \
+            -block-workers 0 \
+            -io-workers 0 \
+            -child-workers 0 \
+            -concurrency-workers 0 \
+            -table-lock-workers 0 \
+            -commit-workers 0 \
+            -buffer-busy-workers 0 \
+            -sequence-workers 0 \
+            -index-workers 0 \
+            -temp-workers 0
+        ;;
+
     locks)
         check_prerequisites
         if [ ! -f "$BINARY" ]; then
             build_simulator
         fi
         test_connection
-        
+
         print_info "Starting simulator with LOCK-FOCUSED workload (10 minutes)..."
         print_info "SQL Server Lock Type Equivalency Test"
         print_info "  • Row Locks (KEY)     → enq: TX row locks"
@@ -322,7 +372,7 @@ case "${1:-}" in
             build_simulator
         fi
         test_connection
-        
+
         print_info "Starting simulator with COMPREHENSIVE workload (20 minutes)..."
         print_info "All 11 worker types generating all Oracle wait event classes"
         print_info "  • Application waits (enq: TM, SQ)"
@@ -331,7 +381,7 @@ case "${1:-}" in
         print_info "  • User I/O waits (db file, temp)"
         print_info "  • CPU intensive queries"
         print_info "Press Ctrl+C to stop\n"
-        
+
         ./"$BINARY" \
             -user "${ORACLE_USER:-hr}" \
             -password "$ORACLE_PASSWORD" \
@@ -349,7 +399,52 @@ case "${1:-}" in
             -index-workers 2 \
             -temp-workers 1
         ;;
-    
+
+    metrics)
+        check_prerequisites
+        if [ ! -f "$BINARY" ]; then
+            build_simulator
+        fi
+        test_connection
+
+        print_info "Starting simulator with SCHEDULED METRICS enabled (15 minutes)..."
+        print_info "Comprehensive metrics burst every 5 seconds includes:"
+        print_info "  • Tablespace pressure (1000 inserts)"
+        print_info "  • Undo segment contention (large update + rollback)"
+        print_info "  • Library cache contention (50 identical SQLs)"
+        print_info "  • Row cache (dictionary) contention"
+        print_info "  • Checkpoint activity (heavy DML)"
+        print_info "  • Archive log activity (heavy redo generation)"
+        print_info "  • Parse activity (100 hard parses)"
+        print_info "  • SQL*Net activity (1000 round-trips)"
+        print_info "  • Control file waits (v$ view access)"
+        print_info "  • Library cache pin waits (procedure compilation)"
+        print_info "  • Row cache lock waits (metadata queries)"
+        print_info "  • DB file sync waits (5000 inserts)"
+        print_info ""
+        print_info "Plus all 11 standard worker types running concurrently"
+        print_info "Press Ctrl+C to stop\n"
+
+        ./"$BINARY" \
+            -user "${ORACLE_USER:-hr}" \
+            -password "$ORACLE_PASSWORD" \
+            -connect "$ORACLE_CONNECT_STRING" \
+            -duration 15m \
+            -slow-workers 2 \
+            -block-workers 3 \
+            -io-workers 2 \
+            -child-workers 2 \
+            -concurrency-workers 2 \
+            -table-lock-workers 2 \
+            -commit-workers 3 \
+            -buffer-busy-workers 2 \
+            -sequence-workers 2 \
+            -index-workers 2 \
+            -temp-workers 1 \
+            -enable-metrics \
+            -metrics-interval 5s
+        ;;
+
     custom)
         check_prerequisites
         if [ ! -f "$BINARY" ]; then

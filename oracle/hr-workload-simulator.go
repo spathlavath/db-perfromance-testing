@@ -47,6 +47,10 @@ type Config struct {
 	SequenceWorkers        int // enq: SQ - sequence contention
 	IndexContentionWorkers int // index range lock contention
 	TempSegmentWorkers     int // direct path temp - temp I/O waits
+
+	// Additional Oracle metrics and wait scenarios
+	EnableScheduledMetrics bool          // Enable scheduled metrics burst
+	MetricsInterval        time.Duration // Interval for scheduled metrics (default 5s)
 }
 
 // WorkloadStats tracks execution statistics
@@ -66,6 +70,20 @@ type WorkloadStats struct {
 	SequenceContentions int
 	IndexContentions    int
 	TempSegmentWaits    int
+
+	// Additional metrics counters
+	TablespacePressureEvents   int
+	UndoSegmentContentions     int
+	LibraryCacheContentions    int
+	RowCacheContentions        int
+	CheckpointActivities       int
+	ArchiveLogActivities       int
+	ParseActivities            int
+	SQLNetActivities           int
+	ControlFileWaits           int
+	LibraryCachePinWaits       int
+	RowCacheLockWaits          int
+	DBFileSyncWaits            int
 }
 
 func (ws *WorkloadStats) IncrementSlowQueries() {
@@ -153,6 +171,78 @@ func (ws *WorkloadStats) IncrementTempSegmentWaits() {
 	ws.TempSegmentWaits++
 }
 
+func (ws *WorkloadStats) IncrementTablespacePressure() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.TablespacePressureEvents++
+}
+
+func (ws *WorkloadStats) IncrementUndoSegmentContentions() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.UndoSegmentContentions++
+}
+
+func (ws *WorkloadStats) IncrementLibraryCacheContentions() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.LibraryCacheContentions++
+}
+
+func (ws *WorkloadStats) IncrementRowCacheContentions() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.RowCacheContentions++
+}
+
+func (ws *WorkloadStats) IncrementCheckpointActivities() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.CheckpointActivities++
+}
+
+func (ws *WorkloadStats) IncrementArchiveLogActivities() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.ArchiveLogActivities++
+}
+
+func (ws *WorkloadStats) IncrementParseActivities() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.ParseActivities++
+}
+
+func (ws *WorkloadStats) IncrementSQLNetActivities() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.SQLNetActivities++
+}
+
+func (ws *WorkloadStats) IncrementControlFileWaits() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.ControlFileWaits++
+}
+
+func (ws *WorkloadStats) IncrementLibraryCachePinWaits() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.LibraryCachePinWaits++
+}
+
+func (ws *WorkloadStats) IncrementRowCacheLockWaits() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.RowCacheLockWaits++
+}
+
+func (ws *WorkloadStats) IncrementDBFileSyncWaits() {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	ws.DBFileSyncWaits++
+}
+
 func (ws *WorkloadStats) Print() {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -168,7 +258,20 @@ func (ws *WorkloadStats) Print() {
 	fmt.Printf("Sequence Contentions:     %d\n", ws.SequenceContentions)
 	fmt.Printf("Index Contentions:        %d\n", ws.IndexContentions)
 	fmt.Printf("Temp Segment Waits:       %d\n", ws.TempSegmentWaits)
-	fmt.Printf("Errors:                   %d\n", ws.Errors)
+	fmt.Printf("\n--- Scheduled Metrics ---\n")
+	fmt.Printf("Tablespace Pressure:      %d\n", ws.TablespacePressureEvents)
+	fmt.Printf("Undo Segment Contentions: %d\n", ws.UndoSegmentContentions)
+	fmt.Printf("Library Cache Contention: %d\n", ws.LibraryCacheContentions)
+	fmt.Printf("Row Cache Contention:     %d\n", ws.RowCacheContentions)
+	fmt.Printf("Checkpoint Activities:    %d\n", ws.CheckpointActivities)
+	fmt.Printf("Archive Log Activities:   %d\n", ws.ArchiveLogActivities)
+	fmt.Printf("Parse Activities:         %d\n", ws.ParseActivities)
+	fmt.Printf("SQL*Net Activities:       %d\n", ws.SQLNetActivities)
+	fmt.Printf("Control File Waits:       %d\n", ws.ControlFileWaits)
+	fmt.Printf("Library Cache Pin Waits:  %d\n", ws.LibraryCachePinWaits)
+	fmt.Printf("Row Cache Lock Waits:     %d\n", ws.RowCacheLockWaits)
+	fmt.Printf("DB File Sync Waits:       %d\n", ws.DBFileSyncWaits)
+	fmt.Printf("\nErrors:                   %d\n", ws.Errors)
 	fmt.Printf("===========================\n\n")
 }
 
@@ -192,6 +295,10 @@ func main() {
 		sequenceWorkers   = flag.Int("sequence-workers", 0, "Number of sequence contention workers (enq: SQ)")
 		indexWorkers      = flag.Int("index-workers", 0, "Number of index contention workers")
 		tempWorkers       = flag.Int("temp-workers", 0, "Number of temp segment I/O workers")
+
+		// Scheduled metrics
+		enableMetrics   = flag.Bool("enable-metrics", false, "Enable scheduled metrics burst (recommended)")
+		metricsInterval = flag.Duration("metrics-interval", 5*time.Second, "Interval for scheduled metrics burst")
 	)
 	flag.Parse()
 
@@ -217,6 +324,8 @@ func main() {
 		SequenceWorkers:        *sequenceWorkers,
 		IndexContentionWorkers: *indexWorkers,
 		TempSegmentWorkers:     *tempWorkers,
+		EnableScheduledMetrics: *enableMetrics,
+		MetricsInterval:        *metricsInterval,
 	}
 
 	fmt.Printf("\n=== HR Workload Simulator (Enhanced) ===\n")
@@ -338,6 +447,13 @@ func main() {
 		go tempSegmentWorker(ctx, &wg, db, i, stats)
 	}
 
+	// 12. Scheduled Metrics Generator - Burst of comprehensive metrics
+	if config.EnableScheduledMetrics {
+		wg.Add(1)
+		go scheduledMetricsGenerator(ctx, &wg, db, stats, config.MetricsInterval)
+		fmt.Printf("✓ Scheduled metrics generator enabled (interval=%v)\n", config.MetricsInterval)
+	}
+
 	// Statistics reporter
 	wg.Add(1)
 	go statsReporter(ctx, &wg, stats, 10*time.Second)
@@ -382,9 +498,9 @@ func slowQueryWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, worker
 
 	queries := []string{
 		// Cartesian join - very slow, high CPU
-		`SELECT /*+ NO_INDEX(e1) NO_INDEX(e2) */ 
+		`SELECT /*+ NO_INDEX(e1) NO_INDEX(e2) */
 		 e1.employee_id, e1.first_name, e2.employee_id, e2.first_name
-		 FROM employees e1, employees e2 
+		 FROM employees e1, employees e2
 		 WHERE e1.salary < e2.salary
 		 AND ROWNUM <= 1000`,
 
@@ -424,6 +540,78 @@ func slowQueryWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, worker
 		 FROM employees
 		 WHERE department_id IS NOT NULL
 		 ORDER BY department_id, salary_rank`,
+
+		// Ultra-complex multi-join query with aggregations, window functions, and subqueries
+		// This creates extreme CPU load with complex join conditions and calculations
+		`SELECT /*+ USE_HASH(e d j l c r) FULL(e) FULL(d) */
+		 e.employee_id,
+		 e.first_name || ' ' || e.last_name as full_name,
+		 e.salary,
+		 e.commission_pct,
+		 e.hire_date,
+		 d.department_id,
+		 d.department_name,
+		 j.job_id,
+		 j.job_title,
+		 j.min_salary,
+		 j.max_salary,
+		 l.city,
+		 l.state_province,
+		 c.country_name,
+		 r.region_id,
+		 r.region_name,
+		 -- Complex calculations
+		 ROUND(e.salary / NULLIF(j.min_salary, 0) * 100, 2) as salary_vs_min_pct,
+		 ROUND(e.salary / NULLIF(j.max_salary, 0) * 100, 2) as salary_vs_max_pct,
+		 ROUND(MONTHS_BETWEEN(SYSDATE, e.hire_date) / 12, 2) as years_employed,
+		 -- Window functions for ranking
+		 RANK() OVER (PARTITION BY d.department_id ORDER BY e.salary DESC) as dept_salary_rank,
+		 DENSE_RANK() OVER (PARTITION BY r.region_id ORDER BY e.salary DESC) as region_salary_rank,
+		 NTILE(10) OVER (ORDER BY e.salary) as salary_decile,
+		 -- Aggregations over windows
+		 AVG(e.salary) OVER (PARTITION BY d.department_id) as dept_avg_salary,
+		 MAX(e.salary) OVER (PARTITION BY d.department_id) as dept_max_salary,
+		 MIN(e.salary) OVER (PARTITION BY d.department_id) as dept_min_salary,
+		 COUNT(*) OVER (PARTITION BY d.department_id) as dept_employee_count,
+		 AVG(e.salary) OVER (PARTITION BY j.job_id) as job_avg_salary,
+		 AVG(e.salary) OVER (PARTITION BY r.region_id) as region_avg_salary,
+		 -- Moving averages
+		 AVG(e.salary) OVER (PARTITION BY d.department_id ORDER BY e.hire_date
+		                     ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) as moving_avg_salary,
+		 -- Lag/Lead for comparisons
+		 LAG(e.salary, 1) OVER (PARTITION BY d.department_id ORDER BY e.hire_date) as prev_hire_salary,
+		 LEAD(e.salary, 1) OVER (PARTITION BY d.department_id ORDER BY e.hire_date) as next_hire_salary,
+		 -- Subquery for job history count
+		 (SELECT COUNT(*) FROM job_history jh2 WHERE jh2.employee_id = e.employee_id) as job_changes,
+		 -- Complex case expressions with correlated subqueries
+		 CASE
+		   WHEN e.salary > (SELECT AVG(salary) * 1.5 FROM employees WHERE department_id = e.department_id)
+		   THEN 'Top Performer'
+		   WHEN e.salary > (SELECT AVG(salary) FROM employees WHERE department_id = e.department_id)
+		   THEN 'Above Average'
+		   WHEN e.salary > (SELECT AVG(salary) * 0.75 FROM employees WHERE department_id = e.department_id)
+		   THEN 'Average'
+		   ELSE 'Below Average'
+		 END as performance_tier,
+		 -- Commission calculations
+		 CASE
+		   WHEN e.commission_pct IS NOT NULL
+		   THEN ROUND(e.salary * (1 + e.commission_pct), 2)
+		   ELSE e.salary
+		 END as total_compensation
+		 FROM employees e
+		 INNER JOIN departments d ON e.department_id = d.department_id
+		 INNER JOIN jobs j ON e.job_id = j.job_id
+		 INNER JOIN locations l ON d.location_id = l.location_id
+		 INNER JOIN countries c ON l.country_id = c.country_id
+		 INNER JOIN regions r ON c.region_id = r.region_id
+		 WHERE e.salary IS NOT NULL
+		   AND e.hire_date IS NOT NULL
+		   AND d.department_id IS NOT NULL
+		 ORDER BY
+		   r.region_name,
+		   d.department_name,
+		   e.salary DESC`,
 	}
 
 	for {
@@ -1240,6 +1428,470 @@ func tempSegmentWorker(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, work
 			time.Sleep(time.Duration(5+rand.Intn(10)) * time.Second)
 		}
 	}
+}
+
+// scheduledMetricsGenerator runs burst of comprehensive metrics at regular intervals
+func scheduledMetricsGenerator(ctx context.Context, wg *sync.WaitGroup, db *sql.DB, stats *WorkloadStats, interval time.Duration) {
+	defer wg.Done()
+	log.Printf("[ScheduledMetrics] Started with interval %v", interval)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("[ScheduledMetrics] Stopped")
+			return
+		case <-ticker.C:
+			fmt.Println("\n=== Scheduled Metrics Burst ===")
+
+			// Launch all scenarios concurrently
+			var metricWg sync.WaitGroup
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateTablespacePressure(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateUndoSegmentContention(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateLibraryCacheContention(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateRowCacheContention(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateCheckpointActivity(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateArchiveLogActivity(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateParseActivity(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateSQLNetActivity(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateControlFileWaits(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateLibraryCachePinWaits(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateRowCacheLockWaits(ctx, db, stats)
+			}()
+
+			metricWg.Add(1)
+			go func() {
+				defer metricWg.Done()
+				generateDBFileSyncWaits(ctx, db, stats)
+			}()
+
+			metricWg.Wait()
+			fmt.Println("=== Metrics burst completed ===")
+		}
+	}
+}
+
+// generateTablespacePressure creates heavy insert load to simulate tablespace pressure
+func generateTablespacePressure(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	query := `INSERT INTO EMPLOYEES (EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, HIRE_DATE, JOB_ID)
+			  SELECT EMPLOYEES_SEQ.NEXTVAL,
+			         'BULK' || LEVEL,
+			         'LOAD' || LEVEL,
+			         'bulk' || LEVEL || '@example.com',
+			         SYSDATE,
+			         'IT_PROG'
+			  FROM DUAL CONNECT BY LEVEL <= 1000`
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Tablespace] Error getting connection: %v", err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Tablespace] Error beginning transaction: %v", err)
+		}
+		return
+	}
+	defer tx.Rollback() // Rollback to avoid permanent data growth
+
+	_, err = tx.ExecContext(ctx, query)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Tablespace] Error inserting: %v", err)
+		}
+		return
+	}
+
+	log.Printf("  [Scheduled] Generated tablespace pressure (1000 inserts)")
+	stats.IncrementTablespacePressure()
+}
+
+// generateUndoSegmentContention creates large update then rollback
+func generateUndoSegmentContention(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Undo] Error getting connection: %v", err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Undo] Error beginning transaction: %v", err)
+		}
+		return
+	}
+	defer tx.Rollback() // Always rollback to create undo activity
+
+	_, err = tx.ExecContext(ctx, "UPDATE EMPLOYEES SET SALARY = SALARY + 100 WHERE DEPARTMENT_ID IN (10, 20, 30, 40, 50)")
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Undo] Error updating: %v", err)
+		}
+		return
+	}
+
+	// Hold transaction for a bit
+	time.Sleep(2 * time.Second)
+
+	log.Printf("  [Scheduled] Generated undo segment contention")
+	stats.IncrementUndoSegmentContentions()
+}
+
+// generateLibraryCacheContention runs same SQL multiple times
+func generateLibraryCacheContention(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	query := "SELECT COUNT(*) FROM EMPLOYEES WHERE DEPARTMENT_ID = 50 AND SALARY > 5000"
+
+	for i := 0; i < 50; i++ {
+		var count int
+		err := db.QueryRowContext(ctx, query).Scan(&count)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-LibCache] Error: %v", err)
+			}
+			return
+		}
+	}
+
+	log.Printf("  [Scheduled] Generated library cache contention (50 identical SQLs)")
+	stats.IncrementLibraryCacheContentions()
+}
+
+// generateRowCacheContention queries data dictionary repeatedly
+func generateRowCacheContention(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	queries := []string{
+		"SELECT table_name FROM user_tables WHERE ROWNUM <= 10",
+		"SELECT sequence_name FROM user_sequences WHERE ROWNUM <= 10",
+		"SELECT index_name FROM user_indexes WHERE ROWNUM <= 10",
+	}
+
+	for i := 0; i < 30; i++ {
+		query := queries[i%len(queries)]
+		rows, err := db.QueryContext(ctx, query)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-RowCache] Error: %v", err)
+			}
+			return
+		}
+		for rows.Next() {
+			// Consume rows
+		}
+		rows.Close()
+	}
+
+	log.Printf("  [Scheduled] Generated row cache (dictionary cache) contention")
+	stats.IncrementRowCacheContentions()
+}
+
+// generateCheckpointActivity generates heavy DML to trigger checkpoints
+func generateCheckpointActivity(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Checkpoint] Error getting connection: %v", err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Checkpoint] Error beginning transaction: %v", err)
+		}
+		return
+	}
+	defer tx.Rollback()
+
+	// Large bulk insert
+	_, err = tx.ExecContext(ctx, `INSERT INTO EMPLOYEES (EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, HIRE_DATE, JOB_ID)
+									SELECT EMPLOYEES_SEQ.NEXTVAL, 'CHK'||LEVEL, 'POINT'||LEVEL, 'chk'||LEVEL||'@ex.com', SYSDATE, 'IT_PROG'
+									FROM DUAL CONNECT BY LEVEL <= 2000`)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Checkpoint] Error inserting: %v", err)
+		}
+		return
+	}
+
+	// Update many rows
+	_, err = tx.ExecContext(ctx, "UPDATE EMPLOYEES SET SALARY = SALARY + 50 WHERE DEPARTMENT_ID IN (10,20,30,40,50,60,70,80,90)")
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-Checkpoint] Error updating: %v", err)
+		}
+		return
+	}
+
+	log.Printf("  [Scheduled] Generated checkpoint activity")
+	stats.IncrementCheckpointActivities()
+}
+
+// generateArchiveLogActivity generates heavy redo by batch DML with commits
+func generateArchiveLogActivity(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-ArchiveLog] Error getting connection: %v", err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	for batch := 0; batch < 10; batch++ {
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-ArchiveLog] Error beginning transaction: %v", err)
+			}
+			return
+		}
+
+		_, err = tx.ExecContext(ctx, `INSERT INTO EMPLOYEES (EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, HIRE_DATE, JOB_ID)
+										SELECT EMPLOYEES_SEQ.NEXTVAL, 'ARCH'||LEVEL, 'LOG'||LEVEL, 'arch'||LEVEL||'@ex.com', SYSDATE, 'IT_PROG'
+										FROM DUAL CONNECT BY LEVEL <= 500`)
+		if err != nil {
+			tx.Rollback()
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-ArchiveLog] Error inserting: %v", err)
+			}
+			return
+		}
+
+		tx.Rollback() // Rollback to avoid permanent data growth
+	}
+
+	log.Printf("  [Scheduled] Generated archive log activity (heavy redo)")
+	stats.IncrementArchiveLogActivities()
+}
+
+// generateParseActivity creates hard parses with unique SQL
+func generateParseActivity(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	for i := 0; i < 100; i++ {
+		// Each SQL is unique, forcing hard parse
+		uniqueSQL := fmt.Sprintf("SELECT /* PARSE_TEST_%d_%d */ SALARY FROM EMPLOYEES WHERE EMPLOYEE_ID = 100", time.Now().UnixNano(), i)
+
+		var salary sql.NullFloat64
+		err := db.QueryRowContext(ctx, uniqueSQL).Scan(&salary)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-Parse] Error: %v", err)
+			}
+			return
+		}
+	}
+
+	log.Printf("  [Scheduled] Generated parse activity (100 hard parses)")
+	stats.IncrementParseActivities()
+}
+
+// generateSQLNetActivity creates many round-trips
+func generateSQLNetActivity(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	query := "SELECT EMPLOYEE_ID, FIRST_NAME, LAST_NAME, SALARY FROM EMPLOYEES WHERE EMPLOYEE_ID = :1"
+
+	for i := 0; i < 1000; i++ {
+		var empID int
+		var firstName, lastName string
+		var salary sql.NullFloat64
+
+		err := db.QueryRowContext(ctx, query, 100).Scan(&empID, &firstName, &lastName, &salary)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-SQLNet] Error: %v", err)
+			}
+			return
+		}
+	}
+
+	log.Printf("  [Scheduled] Generated SQL*Net activity (1000 round-trips)")
+	stats.IncrementSQLNetActivities()
+}
+
+// generateControlFileWaits queries v$ views to access control file
+func generateControlFileWaits(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	queries := []string{
+		"SELECT name, value FROM v$parameter WHERE name LIKE '%control%' AND ROWNUM <= 5",
+		"SELECT status FROM v$instance",
+		"SELECT name FROM v$database",
+	}
+
+	for i := 0; i < 20; i++ {
+		query := queries[i%len(queries)]
+		rows, err := db.QueryContext(ctx, query)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-ControlFile] Error: %v", err)
+			}
+			return
+		}
+		for rows.Next() {
+			// Consume rows
+		}
+		rows.Close()
+	}
+
+	log.Printf("  [Scheduled] Generated control file access waits")
+	stats.IncrementControlFileWaits()
+}
+
+// generateLibraryCachePinWaits creates and drops procedures to generate library cache pins
+func generateLibraryCachePinWaits(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	for i := 0; i < 15; i++ {
+		procName := fmt.Sprintf("TEMP_PROC_%d_%d", time.Now().UnixNano(), i)
+
+		// Create procedure
+		createSQL := fmt.Sprintf(`CREATE OR REPLACE PROCEDURE %s AS
+								  BEGIN
+								    FOR i IN 1..10 LOOP
+								      NULL;
+								    END LOOP;
+								  END;`, procName)
+
+		_, err := db.ExecContext(ctx, createSQL)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-LibCachePin] Error creating procedure: %v", err)
+			}
+			return
+		}
+
+		// Drop procedure
+		dropSQL := fmt.Sprintf("DROP PROCEDURE %s", procName)
+		_, err = db.ExecContext(ctx, dropSQL)
+		if err != nil {
+			// Ignore drop errors
+		}
+	}
+
+	log.Printf("  [Scheduled] Generated library cache pin waits (15 compilations)")
+	stats.IncrementLibraryCachePinWaits()
+}
+
+// generateRowCacheLockWaits queries metadata extensively
+func generateRowCacheLockWaits(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	queries := []string{
+		"SELECT table_name, tablespace_name FROM user_tables WHERE ROWNUM <= 10",
+		"SELECT sequence_name, min_value, max_value FROM user_sequences WHERE ROWNUM <= 10",
+		"SELECT index_name, uniqueness FROM user_indexes WHERE ROWNUM <= 10",
+	}
+
+	for i := 0; i < 50; i++ {
+		query := queries[i%len(queries)]
+		rows, err := db.QueryContext(ctx, query)
+		if err != nil {
+			if !isShutdownError(err) {
+				log.Printf("[Metrics-RowCacheLock] Error: %v", err)
+			}
+			return
+		}
+		for rows.Next() {
+			// Consume rows
+		}
+		rows.Close()
+	}
+
+	log.Printf("  [Scheduled] Generated row cache lock waits (150 metadata queries)")
+	stats.IncrementRowCacheLockWaits()
+}
+
+// generateDBFileSyncWaits creates large data modifications requiring sync
+func generateDBFileSyncWaits(ctx context.Context, db *sql.DB, stats *WorkloadStats) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-DBFileSync] Error getting connection: %v", err)
+		}
+		return
+	}
+	defer conn.Close()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-DBFileSync] Error beginning transaction: %v", err)
+		}
+		return
+	}
+	defer tx.Rollback()
+
+	_, err = tx.ExecContext(ctx, `INSERT INTO EMPLOYEES (EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, HIRE_DATE, JOB_ID)
+									SELECT EMPLOYEES_SEQ.NEXTVAL, 'SYNC'||LEVEL, 'TEST'||LEVEL, 'sync'||LEVEL||'@ex.com', SYSDATE, 'IT_PROG'
+									FROM DUAL CONNECT BY LEVEL <= 5000`)
+	if err != nil {
+		if !isShutdownError(err) {
+			log.Printf("[Metrics-DBFileSync] Error inserting: %v", err)
+		}
+		return
+	}
+
+	log.Printf("  [Scheduled] Generated DB file sync waits")
+	stats.IncrementDBFileSyncWaits()
 }
 
 // getEnv retrieves environment variable or returns default value
