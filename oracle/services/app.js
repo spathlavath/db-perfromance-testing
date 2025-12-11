@@ -115,6 +115,80 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+// Add logging middleware to track all requests
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path} - Request received`);
+  next();
+});
+
+// ============================================================================
+// SIMPLE TEST ENDPOINTS - No Database Required
+// ============================================================================
+
+// 1. Simple GET - Pure HTTP, no database
+app.get('/test/simple', (req, res) => {
+  console.log('✅ GET /test/simple called');
+  res.json({ 
+    message: 'Simple GET working',
+    timestamp: new Date().toISOString(),
+    method: 'GET',
+    path: '/test/simple'
+  });
+});
+
+// 2. Simple POST - Pure HTTP, no database
+app.post('/test/simple', (req, res) => {
+  console.log('✅ POST /test/simple called');
+  res.json({ 
+    message: 'Simple POST working',
+    timestamp: new Date().toISOString(),
+    method: 'POST',
+    path: '/test/simple',
+    body: req.body
+  });
+});
+
+// 3. POST with JSON processing
+app.post('/test/echo', (req, res) => {
+  console.log('✅ POST /test/echo called with body:', req.body);
+  res.json({
+    message: 'Echo endpoint',
+    received: req.body,
+    timestamp: new Date().toISOString(),
+    method: 'POST',
+    path: '/test/echo'
+  });
+});
+
+// 4. POST with artificial delay
+app.post('/test/slow', async (req, res) => {
+  const delay = req.body.delay || 1000;
+  console.log(`✅ POST /test/slow called - waiting ${delay}ms`);
+  await new Promise(resolve => setTimeout(resolve, delay));
+  res.json({
+    message: 'Slow endpoint completed',
+    delay_ms: delay,
+    timestamp: new Date().toISOString(),
+    method: 'POST',
+    path: '/test/slow'
+  });
+});
+
+// 5. POST that returns error
+app.post('/test/error', (req, res) => {
+  console.log('✅ POST /test/error called - returning error');
+  res.status(500).json({
+    error: 'Intentional error for testing',
+    timestamp: new Date().toISOString(),
+    method: 'POST',
+    path: '/test/error'
+  });
+});
+
+// ============================================================================
+// ORIGINAL ENDPOINTS
+// ============================================================================
+
 // Health check endpoint
 app.get('/health', async (req, res) => {
   try {
@@ -895,6 +969,13 @@ async function main() {
       logger.info(`Oracle HR Portal API listening on port ${PORT}`);
       logger.info('');
       logger.info('📋 Available Endpoints:');
+      logger.info('');
+      logger.info('🧪 TEST ENDPOINTS (No Database):');
+      logger.info('  GET  /test/simple - Simple GET request');
+      logger.info('  POST /test/simple - Simple POST request');
+      logger.info('  POST /test/echo - Echo JSON body');
+      logger.info('  POST /test/slow - Slow request with delay');
+      logger.info('  POST /test/error - Return 500 error');
       logger.info('');
       logger.info('🏥 System:');
       logger.info('  GET  /health - Health check');
