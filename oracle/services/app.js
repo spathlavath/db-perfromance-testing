@@ -44,7 +44,6 @@ require('dotenv').config();
 // Use instrumented OracleDB with OpenTelemetry tracing
 const oracledb = require('./oracledb-instrumented');
 
-const winston = require('winston');
 const express = require('express');
 
 // Initialize Oracle Thick Mode - MUST be called before any oracledb operations
@@ -56,20 +55,12 @@ try {
   console.log('ℹ️  Continuing in Thin Mode (encryption may not be supported)');
 }
 
-// Configure logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `${timestamp} [${level.toUpperCase()}]: ${message}`;
-    })
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: 'oracle-test-app.log' })
-  ]
-});
+// Simple console logger
+const logger = {
+  info: (msg) => console.log(`[INFO] ${msg}`),
+  error: (msg, err) => console.error(`[ERROR] ${msg}`, err || ''),
+  warn: (msg) => console.warn(`[WARN] ${msg}`)
+};
 
 // Oracle DB Configuration
 const dbConfig = {
