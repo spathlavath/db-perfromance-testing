@@ -28,11 +28,16 @@ const resource = new Resource({
   [SEMRESATTRS_SERVICE_VERSION]: '1.0.0',
 });
 
+// Parse API key from headers
+const apiKey = process.env.OTEL_EXPORTER_OTLP_HEADERS?.includes('=') 
+  ? process.env.OTEL_EXPORTER_OTLP_HEADERS.split('=')[1] 
+  : process.env.OTEL_EXPORTER_OTLP_HEADERS || process.env.NEW_RELIC_LICENSE_KEY;
+
 // Configure OTLP Trace Exporter
 const traceExporter = new OTLPTraceExporter({
   url: `${process.env.OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces`,
   headers: {
-    'api-key': process.env.OTEL_EXPORTER_OTLP_HEADERS?.split('=')[1] || process.env.NEW_RELIC_LICENSE_KEY
+    'api-key': apiKey
   },
   compression: 'gzip',
 });
@@ -41,7 +46,7 @@ const traceExporter = new OTLPTraceExporter({
 const metricExporter = new OTLPMetricExporter({
   url: `${process.env.OTEL_EXPORTER_OTLP_ENDPOINT}/v1/metrics`,
   headers: {
-    'api-key': process.env.OTEL_EXPORTER_OTLP_HEADERS?.split('=')[1] || process.env.NEW_RELIC_LICENSE_KEY
+    'api-key': apiKey
   },
   compression: 'gzip',
 });

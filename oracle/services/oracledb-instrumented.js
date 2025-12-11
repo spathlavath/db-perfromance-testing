@@ -2,19 +2,25 @@
  * Instrumented Oracle DB wrapper
  * Adds OpenTelemetry tracing spans for all database operations
  * Following OpenTelemetry Semantic Conventions v1.38.0 for database spans
+ * Enhanced for New Relic APM Database Monitoring
  */
 
 const oracledb = require('oracledb');
 const { trace, context, SpanStatusCode, SpanKind } = require('@opentelemetry/api');
 
-// CRITICAL FIX: Use hardcoded attribute names since semantic-conventions v1.24.0 
-// doesn't properly export experimental attributes
-// Following OpenTelemetry Database Semantic Conventions v1.27.0
+// Database semantic convention attributes
 const ATTR_DB_SYSTEM = 'db.system';
-const ATTR_DB_OPERATION_NAME = 'db.operation.name';
-const ATTR_DB_COLLECTION_NAME = 'db.collection.name'; 
-const ATTR_DB_QUERY_TEXT = 'db.query.text';
-const ATTR_DB_NAMESPACE = 'db.namespace';
+const ATTR_DB_OPERATION = 'db.operation';
+const ATTR_DB_STATEMENT = 'db.statement';
+const ATTR_DB_NAME = 'db.name';
+const ATTR_DB_USER = 'db.user';
+const ATTR_DB_CONNECTION_STRING = 'db.connection_string';
+const ATTR_SERVER_ADDRESS = 'server.address';
+const ATTR_SERVER_PORT = 'server.port';
+
+// New Relic specific attributes for better APM integration
+const ATTR_PEER_SERVICE = 'peer.service';
+const ATTR_DB_INSTANCE = 'db.instance';
 
 // Get the tracer
 const tracer = trace.getTracer('oracledb', '6.4.0');
@@ -22,13 +28,66 @@ const tracer = trace.getTracer('oracledb', '6.4.0');
 // Debug flag - set to true to enable detailed logging
 const DEBUG = true;
 
-// Store the original execute method
+// Store connection metadata
+let connectionMetadata = {
+  host: null,
+  port: null,
+  database: null,
+  user: null
+};
+
+// Store the original methods
 const originalExecute = oracledb.Connection.prototype.execute;
 const originalExecuteMany = oracledb.Connection.prototype.executeMany;
+const originalCreatePool = oracledb.createPool;
 
 if (DEBUG) {
   console.log('🔧 [OTel-DB] Instrumentation module loaded, wrapping oracledb methods');
 }
+
+/**
+ * Parse Oracle connection string to extract host, port, and database
+ */
+function parseConnectionString(connectString) {
+  try {
+    // Format: host:port/service_name or host:port:sid
+    const match = connectString.match(/([^:\/]+):(\d+)[\/:]([\w\.]+)/);
+    if (match) {
+      return {
+        host: match[1],
+        port: parseInt(match[2]),
+        database: match[3]
+      };
+    }
+  } catch (e) {
+    if (DEBUG) console.warn('Failed to parse connection string:', e.message);
+  }
+  return { host: null, port: null, database: null };
+}
+
+/**
+ * Wrap createPool to capture connection metadata
+ */
+oracledb.createPool = async function(poolAttrs) {
+  if (DEBUG) {
+    console.log('🔧 [OTel-DB] Intercepting createPool call');
+  }
+  
+  // Parse connection string
+  if (poolAttrs.connectString) {
+    const parsed = parseConnectionString(poolAttrs.connectString);
+    connectionMetadata = {
+      ...parsed,
+      user: poolAttrs.user || null
+    };
+    
+    if (DEBUG) {
+      console.log('🔧 [OTel-DB] Connection metadata:', connectionMetadata);
+    }
+  }
+  
+  return originalCreatePool.call(this, poolAttrs);
+};
 
 /**
  * Extract operation name from SQL query
@@ -100,44 +159,39 @@ oracledb.Connection.prototype.execute = function(sql, bindParams, options, callb
   const sqlStatement = typeof sql === 'string' ? sql : sql.sql || 'UNKNOWN';
   const operation = extractOperation(sqlStatement);
   const tableName = extractTableName(sqlStatement);
-  const spanName = generateSpanName(operation, tableName);
+  const spanName = `${operation}${tableName ? ' ' + tableName : ''}`;
   
-  // Build span attributes following OpenTelemetry semantic conventions
+  // Build span attributes following OpenTelemetry semantic conventions + New Relic requirements
   const attributes = {
-    [ATTR_DB_SYSTEM]: 'oracle', // Required
-    [ATTR_DB_OPERATION_NAME]: operation, // Conditionally Required
-    [ATTR_DB_QUERY_TEXT]: sqlStatement.substring(0, 2000), // Recommended
+    // OpenTelemetry standard attributes
+    [ATTR_DB_SYSTEM]: 'oracle',
+    [ATTR_DB_OPERATION]: operation.toLowerCase(),
+    [ATTR_DB_STATEMENT]: sqlStatement.substring(0, 4095),
+    
+    // Connection attributes
+    [ATTR_DB_USER]: connectionMetadata.user || process.env.ORACLE_USER,
+    [ATTR_DB_NAME]: connectionMetadata.database || 'oracle',
+    
+    // Server attributes
+    [ATTR_SERVER_ADDRESS]: connectionMetadata.host,
+    [ATTR_SERVER_PORT]: connectionMetadata.port,
+    
+    // New Relic specific attributes for APM
+    [ATTR_PEER_SERVICE]: 'oracle-database',
+    [ATTR_DB_INSTANCE]: connectionMetadata.database || process.env.ORACLE_CONNECT_STRING,
   };
   
-  // Add collection name if available
+  // Add table name if available
   if (tableName) {
-    attributes[ATTR_DB_COLLECTION_NAME] = tableName; // Conditionally Required
-    // CRITICAL: New Relic APM also needs this legacy attribute for UI display
     attributes['db.sql.table'] = tableName;
   }
   
-  // Add namespace (database/schema)
-  if (process.env.ORACLE_USER) {
-    attributes[ATTR_DB_NAMESPACE] = process.env.ORACLE_USER; // Conditionally Required
-  }
-  
-  // CRITICAL: New Relic APM needs these legacy attributes for proper categorization
-  attributes['db.operation'] = operation.toLowerCase();
-  attributes['db.statement'] = sqlStatement.substring(0, 2000);
-  
-  // Add server information (recommended)
-  if (process.env.ORACLE_CONNECT_STRING) {
-    const connectionStr = process.env.ORACLE_CONNECT_STRING;
-    // Try to extract server address and port
-    const match = connectionStr.match(/([^:/@]+):(\d+)/);
-    if (match) {
-      attributes['server.address'] = match[1];
-      attributes['server.port'] = parseInt(match[2], 10);
-      // New Relic also expects these
-      attributes['db.instance'] = connectionStr;
-      attributes['peer.hostname'] = match[1];
+  // Remove null/undefined attributes
+  Object.keys(attributes).forEach(key => {
+    if (attributes[key] === null || attributes[key] === undefined) {
+      delete attributes[key];
     }
-  }
+  });
   
   // CRITICAL: Start span in the active context to ensure it's linked to parent HTTP span
   const activeContext = context.active();
