@@ -96,20 +96,57 @@ const sdk = new NodeSDK({
           // Don't trace health checks
           return req.url === '/health';
         },
-        // Critical: Capture request/response attributes
+        // Critical: Capture ALL required attributes for New Relic APM transactions
         requestHook: (span, request) => {
-          span.setAttribute('http.request.method', request.method);
+          // HTTP semantic convention attributes (required for New Relic)
+          span.setAttribute('http.method', request.method);
+          span.setAttribute('http.scheme', 'http');
+          span.setAttribute('http.target', request.url);
+          span.setAttribute('http.host', request.headers?.host || 'localhost:3000');
+          
+          // New Relic APM specific attributes for transaction naming
+          span.setAttribute('http.url', `http://${request.headers?.host || 'localhost:3000'}${request.url}`);
+          span.setAttribute('request.method', request.method);
+          span.setAttribute('request.uri', request.url?.split('?')[0]);
+          
+          // User agent for better APM insights
+          if (request.headers?.['user-agent']) {
+            span.setAttribute('http.user_agent', request.headers['user-agent']);
+          }
         },
         responseHook: (span, response) => {
+          span.setAttribute('http.status_code', response.statusCode);
           span.setAttribute('http.response.status_code', response.statusCode);
         },
       },
       '@opentelemetry/instrumentation-express': {
         enabled: true,
-        // Critical: Capture route information
+        // Critical: Set proper transaction name from Express route
         requestHook: (span, info) => {
-          if (info.route) {
-            span.setAttribute('http.route', info.route);
+          const req = info.request;
+          
+          // Get the Express route pattern (e.g., /employees/:id)
+          const route = req.route?.path;
+          const method = req.method;
+          const baseUrl = req.baseUrl || '';
+          
+          if (route) {
+            // Use Express route pattern for consistent transaction names
+            const fullRoute = baseUrl + route;
+            const transactionName = `${method} ${fullRoute}`;
+            
+            // Update the span name to the transaction name
+            span.updateName(transactionName);
+            
+            // Set attributes that New Relic uses for transaction grouping
+            span.setAttribute('http.route', fullRoute);
+            span.setAttribute('express.route', fullRoute);
+            span.setAttribute('transaction.name', transactionName);
+          } else {
+            // Fallback for routes without patterns
+            const path = req.path || req.url?.split('?')[0] || req.url;
+            span.updateName(`${method} ${path}`);
+            span.setAttribute('http.route', path);
           }
         },
       },
