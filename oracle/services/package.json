@@ -4,9 +4,9 @@
   "description": "Node.js application to test New Relic Oracle DB Receiver features",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
-    "dev": "nodemon app.js",
-    "test": "node test-all-features.js"
+    "start": "node --require ./instrumentation.js app.js",
+    "dev": "nodemon --require ./instrumentation.js app.js",
+    "test": "node --require ./instrumentation.js test-all-features.js"
   },
   "keywords": [
     "oracle",

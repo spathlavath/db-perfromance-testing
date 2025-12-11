@@ -1,5 +1,8 @@
-// OpenTelemetry APM Instrumentation - MUST be loaded first
-require('./tracing');
+// ============================================================================
+// OpenTelemetry APM Instrumentation
+// Loaded via: node --require ./instrumentation.js app.js (see package.json)
+// This ensures instrumentation happens BEFORE any modules are loaded
+// ============================================================================
 
 // ============================================================================
 // New Relic APM Agent - COMMENTED OUT (Using OpenTelemetry instead)

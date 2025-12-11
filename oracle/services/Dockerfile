@@ -31,5 +31,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Start the application
-CMD ["node", "--max-old-space-size=2048", "app.js"]
+# Start the application with OpenTelemetry instrumentation
+CMD ["node", "--require", "./instrumentation.js", "--max-old-space-size=2048", "app.js"]
