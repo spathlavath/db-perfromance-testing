@@ -22,11 +22,10 @@ WORKDIR /app
 # Copy the built jar from builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-# Download New Relic Java agent
-ADD https://download.newrelic.com/newrelic/java-agent/newrelic-agent/current/newrelic-java.zip /tmp/newrelic-java.zip
-RUN unzip /tmp/newrelic-java.zip -d /app && \
-    rm /tmp/newrelic-java.zip && \
-    chmod 644 /app/newrelic/newrelic.jar
+# Copy the custom New Relic Java agent (uploaded to VM)
+# The newrelic.jar must be present in the build context directory
+COPY newrelic.jar /app/newrelic/newrelic.jar
+RUN chmod 644 /app/newrelic/newrelic.jar
 
 # Copy New Relic configuration
 COPY src/main/resources/newrelic.yml /app/newrelic/newrelic.yml
