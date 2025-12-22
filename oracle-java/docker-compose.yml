@@ -13,7 +13,6 @@ services:
       - POOL_MAX=${POOL_MAX:-10}
       - POOL_INCREMENT=${POOL_INCREMENT:-1}
       - POOL_TIMEOUT=${POOL_TIMEOUT:-60}
-      - PORT=${PORT:-3000}
       - AUTO_RUN=${AUTO_RUN:-false}
       - TEST_INTENSITY=${TEST_INTENSITY:-medium}
       - TEST_DURATION=${TEST_DURATION:-600}
