@@ -24,7 +24,7 @@ services:
       - NEW_RELIC_HOST=${NEW_RELIC_HOST:-collector.newrelic.com}
       - NEW_RELIC_LOG_LEVEL=${NEW_RELIC_LOG_LEVEL:-info}
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-3001}:3000"
     networks:
       - oracle-network
     deploy:
