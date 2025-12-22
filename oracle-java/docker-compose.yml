@@ -3,7 +3,7 @@ version: '3.8'
 services:
   oracle-test-app:
     build:
-      context: ./services
+      context: .
       dockerfile: Dockerfile
     environment:
       - ORACLE_USER=${ORACLE_USER}
@@ -56,6 +56,14 @@ services:
       # Semantic conventions
       - OTEL_SEMCONV_STABILITY_OPT_IN=${OTEL_SEMCONV_STABILITY_OPT_IN:-http}
       - OTEL_LOG_LEVEL=${OTEL_LOG_LEVEL:-info}
+      # Agent Selection (set which agents to enable)
+      - USE_OTEL=${USE_OTEL:-true}
+      - USE_NEW_RELIC=${USE_NEW_RELIC:-false}
+      # New Relic APM Configuration
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_APP_NAME=${NEW_RELIC_APP_NAME:-Oracle-HR-Portal-Java}
+      - NEW_RELIC_HOST=${NEW_RELIC_HOST:-collector.newrelic.com}
+      - NEW_RELIC_LOG_LEVEL=${NEW_RELIC_LOG_LEVEL:-info}
     ports:
       - "${PORT:-3000}:3000"
     networks:
@@ -98,7 +106,6 @@ services:
         condition: service_healthy
     networks:
       - oracle-network
-    # Run HR portal load test (removed sh -c which causes error)
     command: run /scripts/load-test.js
 
 networks:

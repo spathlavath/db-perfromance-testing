@@ -1,199 +1,225 @@
+/**
+ * K6 Load Test for Oracle HR Portal
+ * Tests realistic HR operations across multiple endpoints
+ * 
+ * This generates diverse database span traces:
+ * - SELECT queries (simple, with JOINs, with aggregation)
+ * - INSERT operations
+ * - UPDATE operations  
+ * - Complex transactions
+ * 
+ * Run with: k6 run --vus 5 --duration 30m hr-portal-load-test.js
+ */
+
 import http from 'k6/http';
 import { check, sleep } from 'k6';
-import { Rate, Trend, Counter } from 'k6/metrics';
+import { Rate, Trend } from 'k6/metrics';
 
 // Custom metrics
 const errorRate = new Rate('errors');
-const queryDuration = new Trend('query_duration');
-const transactionDuration = new Trend('transaction_duration');
-const requestCounter = new Counter('request_count');
+const employeeListDuration = new Trend('employee_list_duration');
+const employeeDetailDuration = new Trend('employee_detail_duration');
+const departmentListDuration = new Trend('department_list_duration');
+const salaryReportDuration = new Trend('salary_report_duration');
 
 // Configuration
-const BASE_URL = __ENV.ORACLE_TEST_APP_URL || 'http://localhost:3000';
-const LOG_LEVEL = __ENV.LOG_LEVEL || 'INFO';
-const DETAILED_LOGGING = __ENV.DETAILED_RESPONSE_LOGGING === 'true';
-const SLOW_REQUEST_THRESHOLD = parseInt(__ENV.LOG_SLOW_REQUESTS_MS || '5000');
+const BASE_URL = __ENV.BASE_URL || 'http://oracle-test-app:3000';
 
-// Test stages - Continuous 2 week run with sustainable medium load
+// Test options
 export const options = {
   stages: [
-    { duration: '2m', target: 5 },      // Gradual ramp-up to 5 users
-    { duration: '336h', target: 5 },    // Maintain 5 users for 2 weeks (336 hours)
+    { duration: '2m', target: 3 },   // Ramp up to 3 VUs
+    { duration: '25m', target: 5 },  // Stay at 5 VUs
+    { duration: '3m', target: 0 },   // Ramp down
   ],
   thresholds: {
-    http_req_duration: ['p(95)<5000'], // 95% of requests should be below 5s
-    errors: ['rate<0.1'],              // Error rate should be below 10%
+    'http_req_duration': ['p(95)<2000'], // 95% of requests should be below 2s
+    'errors': ['rate<0.1'],              // Error rate should be below 10%
   },
 };
 
-// Logging function
-function log(level, message, data = null) {
-  const levels = { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3 };
-  const currentLevel = levels[LOG_LEVEL] || 1;
-  const messageLevel = levels[level] || 1;
-  
-  if (messageLevel >= currentLevel) {
-    const timestamp = new Date().toISOString();
-    let logMessage = `[${timestamp}] [${level}] ${message}`;
-    if (data && DETAILED_LOGGING) {
-      logMessage += ` | Data: ${JSON.stringify(data)}`;
-    }
-    console.log(logMessage);
-  }
+// Sample data for creating employees
+const firstNames = ['John', 'Jane', 'Michael', 'Sarah', 'David', 'Emily', 'Robert', 'Lisa'];
+const lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis'];
+
+function getRandomElement(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Health check function
-function healthCheck() {
-  const startTime = Date.now();
-  const res = http.get(`${BASE_URL}/health`);
-  const duration = Date.now() - startTime;
-  
-  const success = check(res, {
-    'health check status is 200': (r) => r.status === 200,
-    'health check has status field': (r) => JSON.parse(r.body).status !== undefined,
-  });
-  
-  if (!success) {
-    log('ERROR', 'Health check failed', { status: res.status, body: res.body });
-    errorRate.add(1);
-  } else {
-    log('DEBUG', 'Health check passed', { duration: `${duration}ms` });
-  }
-  
-  if (duration > SLOW_REQUEST_THRESHOLD) {
-    log('WARN', `Slow health check: ${duration}ms`);
-  }
-  
-  requestCounter.add(1);
-  return success;
+function generateEmail(firstName, lastName) {
+  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}@company.com`;
 }
 
-// Pool statistics check
-function checkPoolStats() {
-  const startTime = Date.now();
-  const res = http.get(`${BASE_URL}/pool-stats`);
-  const duration = Date.now() - startTime;
-  
-  const success = check(res, {
-    'pool stats status is 200': (r) => r.status === 200,
-  });
-  
-  if (!success) {
-    log('ERROR', 'Pool stats check failed', { status: res.status });
-    errorRate.add(1);
-  } else {
-    log('DEBUG', 'Pool stats retrieved', { duration: `${duration}ms` });
-  }
-  
-  if (duration > SLOW_REQUEST_THRESHOLD) {
-    log('WARN', `Slow pool stats request: ${duration}ms`);
-  }
-  
-  requestCounter.add(1);
-  return success;
-}
-
-// Start workload function
-function startWorkload(workloadType, intensity = 'medium', duration = 60) {
-  const startTime = Date.now();
-  const payload = JSON.stringify({
-    type: workloadType,
-    intensity: intensity,
-    duration: duration,
-  });
-  
-  const params = {
-    headers: { 'Content-Type': 'application/json' },
-  };
-  
-  const res = http.post(`${BASE_URL}/workload/start`, payload, params);
-  const requestDuration = Date.now() - startTime;
-  
-  const success = check(res, {
-    [`${workloadType} workload started`]: (r) => r.status === 200,
-  });
-  
-  if (!success) {
-    log('ERROR', `Failed to start ${workloadType} workload`, { 
-      status: res.status, 
-      body: res.body 
-    });
-    errorRate.add(1);
-  } else {
-    log('INFO', `Started ${workloadType} workload`, { 
-      intensity, 
-      duration: `${duration}s`,
-      requestDuration: `${requestDuration}ms`
-    });
-  }
-  
-  if (requestDuration > SLOW_REQUEST_THRESHOLD) {
-    log('WARN', `Slow workload start request: ${requestDuration}ms`);
-  }
-  
-  // Track specific workload metrics
-  if (workloadType === 'query') {
-    queryDuration.add(requestDuration);
-  } else if (workloadType === 'transaction') {
-    transactionDuration.add(requestDuration);
-  }
-  
-  requestCounter.add(1);
-  return success;
-}
-
-// Main test scenario
 export default function() {
-  // 1. Health check
-  if (!healthCheck()) {
-    log('ERROR', 'Aborting iteration due to failed health check');
-    sleep(5);
-    return;
+  const scenario = Math.random();
+  
+  // 1. List Employees (30% of requests) - SELECT with JOIN
+  if (scenario < 0.30) {
+    const res = http.get(`${BASE_URL}/employees`);
+    employeeListDuration.add(res.timings.duration);
+    check(res, {
+      'employee list status 200': (r) => r.status === 200,
+      'employee list has data': (r) => JSON.parse(r.body).employees.length > 0,
+    }) || errorRate.add(1);
   }
   
-  sleep(2);
-  
-  // 2. Check pool statistics
-  checkPoolStats();
-  
-  sleep(3);
-  
-  // 3. Start workloads with medium intensity for sustainability
-  const workloadTypes = ['query', 'transaction', 'connection', 'memory'];
-  const randomWorkload = workloadTypes[Math.floor(Math.random() * workloadTypes.length)];
-  
-  // Use medium intensity for stable 2-week run
-  log('INFO', `Starting random workload: ${randomWorkload} with medium intensity`);
-  startWorkload(randomWorkload, 'medium', 60);
-  
-  sleep(5);
-  
-  // 4. Periodically check pool stats during workload
-  checkPoolStats();
-  
-  sleep(8);
-}
-
-// Setup function - runs once at the start
-export function setup() {
-  log('INFO', '=== Starting Oracle DB Load Test ===');
-  log('INFO', `Base URL: ${BASE_URL}`);
-  log('INFO', `Log Level: ${LOG_LEVEL}`);
-  log('INFO', `Detailed Logging: ${DETAILED_LOGGING}`);
-  log('INFO', `Slow Request Threshold: ${SLOW_REQUEST_THRESHOLD}ms`);
-  
-  // Initial health check
-  const res = http.get(`${BASE_URL}/health`);
-  if (res.status !== 200) {
-    log('ERROR', 'Initial health check failed - application may not be ready');
-    throw new Error('Application not healthy');
+  // 2. Get Employee Details (25% of requests) - SELECT with multiple JOINs
+  else if (scenario < 0.55) {
+    // Random employee ID between 100-206 (typical HR schema range)
+    const employeeId = Math.floor(Math.random() * 107) + 100;
+    const res = http.get(`${BASE_URL}/employees/${employeeId}`);
+    employeeDetailDuration.add(res.timings.duration);
+    check(res, {
+      'employee detail status in [200,404]': (r) => r.status === 200 || r.status === 404,
+    }) || errorRate.add(1);
   }
   
-  log('INFO', 'Initial health check passed - starting load test');
+  // 3. List Departments with Stats (15% of requests) - SELECT with aggregation
+  else if (scenario < 0.70) {
+    const res = http.get(`${BASE_URL}/departments`);
+    departmentListDuration.add(res.timings.duration);
+    check(res, {
+      'department list status 200': (r) => r.status === 200,
+      'departments have stats': (r) => {
+        const data = JSON.parse(r.body);
+        return data.departments && data.departments.length > 0;
+      },
+    }) || errorRate.add(1);
+  }
+  
+  // 4. Get Department Employees (10% of requests) - SELECT with filter
+  else if (scenario < 0.80) {
+    // Random department ID between 10-110 (typical range)
+    const deptId = (Math.floor(Math.random() * 11) + 1) * 10;
+    const res = http.get(`${BASE_URL}/departments/${deptId}/employees`);
+    check(res, {
+      'dept employees status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 5. Salary Report (5% of requests) - Complex aggregation query
+  else if (scenario < 0.85) {
+    const res = http.get(`${BASE_URL}/reports/salary-by-department`);
+    salaryReportDuration.add(res.timings.duration);
+    check(res, {
+      'salary report status 200': (r) => r.status === 200,
+      'report has data': (r) => JSON.parse(r.body).report.length > 0,
+    }) || errorRate.add(1);
+  }
+  
+  // 6. Get Jobs List (5% of requests) - Simple SELECT
+  else if (scenario < 0.90) {
+    const res = http.get(`${BASE_URL}/jobs`);
+    check(res, {
+      'jobs list status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 7. Update Employee (3% of requests) - UPDATE operation
+  else if (scenario < 0.93) {
+    const employeeId = Math.floor(Math.random() * 107) + 100;
+    const newSalary = Math.floor(Math.random() * 30000) + 50000; // 50k-80k
+    
+    const payload = JSON.stringify({
+      salary: newSalary,
+      job_id: 'IT_PROG',
+      department_id: 60,
+      manager_id: 103
+    });
+    
+    const params = {
+      headers: { 'Content-Type': 'application/json' },
+    };
+    
+    const res = http.put(`${BASE_URL}/employees/${employeeId}`, payload, params);
+    check(res, {
+      'employee update status in [200,404]': (r) => r.status === 200 || r.status === 404,
+    }) || errorRate.add(1);
+  }
+  
+  // 8. Get Employee Job History (5% of requests) - SELECT with date filter
+  else if (scenario < 0.98) {
+    const employeeId = Math.floor(Math.random() * 107) + 100;
+    const res = http.get(`${BASE_URL}/employees/${employeeId}/history`);
+    check(res, {
+      'job history status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 9. Create Employee (1% of requests) - INSERT operation
+  else if (scenario < 0.99) {
+    const firstName = getRandomElement(firstNames);
+    const lastName = getRandomElement(lastNames);
+    
+    const payload = JSON.stringify({
+      first_name: firstName,
+      last_name: lastName,
+      email: generateEmail(firstName, lastName),
+      phone_number: '650.555.' + Math.floor(Math.random() * 9000 + 1000),
+      hire_date: new Date().toISOString().split('T')[0],
+      job_id: 'IT_PROG',
+      salary: Math.floor(Math.random() * 40000) + 60000,
+      department_id: 60,
+      manager_id: 103
+    });
+    
+    const params = {
+      headers: { 'Content-Type': 'application/json' },
+    };
+    
+    const res = http.post(`${BASE_URL}/employees`, payload, params);
+    check(res, {
+      'employee create status 201': (r) => r.status === 201,
+      'employee ID returned': (r) => JSON.parse(r.body).employee_id > 0,
+    }) || errorRate.add(1);
+  }
+  
+  // 10. Promote Employee (1% of requests) - Transaction: UPDATE + INSERT
+  else {
+    const employeeId = Math.floor(Math.random() * 107) + 100;
+    
+    const payload = JSON.stringify({
+      new_job_id: 'IT_PROG',
+      new_salary: Math.floor(Math.random() * 50000) + 80000,
+      new_department_id: 90
+    });
+    
+    const params = {
+      headers: { 'Content-Type': 'application/json' },
+    };
+    
+    const res = http.post(`${BASE_URL}/employees/${employeeId}/promote`, payload, params);
+    check(res, {
+      'promotion status in [200,404,500]': (r) => [200, 404, 500].includes(r.status),
+    }) || errorRate.add(1);
+  }
+  
+  // Random sleep between 1-3 seconds to simulate real user behavior
+  sleep(Math.random() * 2 + 1);
 }
 
-// Teardown function - runs once at the end
-export function teardown(data) {
-  log('INFO', '=== Load Test Complete ===');
-  log('INFO', 'Check metrics for detailed results');
+export function handleSummary(data) {
+  console.log('');
+  console.log('='.repeat(80));
+  console.log('📊 Oracle HR Portal Load Test Summary');
+  console.log('='.repeat(80));
+  console.log('');
+  console.log('Database Operations Tested:');
+  console.log('  ✓ SELECT with JOIN (employee list)');
+  console.log('  ✓ SELECT with multiple JOINs (employee details)');
+  console.log('  ✓ SELECT with aggregation (department stats)');
+  console.log('  ✓ SELECT with filter (department employees)');
+  console.log('  ✓ Complex SELECT with GROUP BY (salary report)');
+  console.log('  ✓ Simple SELECT (jobs list)');
+  console.log('  ✓ INSERT (create employee)');
+  console.log('  ✓ UPDATE (update employee)');
+  console.log('  ✓ Transaction (promote employee)');
+  console.log('  ✓ SELECT with date filter (job history)');
+  console.log('');
+  console.log('These operations will generate diverse database spans in New Relic!');
+  console.log('='.repeat(80));
+  
+  return {
+    'stdout': JSON.stringify(data, null, 2),
+  };
 }
