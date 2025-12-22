@@ -1,15 +1,12 @@
-# Oracle Java HR Portal - OpenTelemetry Test Application
+# Oracle Java HR Portal - New Relic APM Application
 
-A Java Spring Boot application for testing Oracle Database with OpenTelemetry instrumentation.
+A Java Spring Boot application for testing Oracle Database with New Relic Java APM agent.
 
 ## Features
 
 - Spring Boot 3.2 with Java 17
 - Oracle JDBC Driver with HikariCP connection pooling
-- **Dual APM Support:**
-  - OpenTelemetry automatic instrumentation via Java agent (default)
-  - New Relic Java APM agent (optional)
-  - Can use either one or both simultaneously
+- **New Relic Java APM** native instrumentation
 - REST API for HR operations (employees, departments, jobs, reports)
 - k6 load testing setup
 - Docker containerization with health checks
@@ -18,6 +15,7 @@ A Java Spring Boot application for testing Oracle Database with OpenTelemetry in
 
 - Docker and Docker Compose
 - Oracle Database with HR schema
+- New Relic account and license key
 - Environment variables configured (see `.env.example`)
 
 ## Environment Variables
@@ -34,26 +32,12 @@ Copy `.env.example` to `.env` and configure:
 - `POOL_MAX` - Maximum pool size (default: 10)
 - `POOL_TIMEOUT` - Connection timeout in seconds (default: 60)
 
-### APM Agent Selection
-Choose which agents to enable:
-- `USE_OTEL` - Enable OpenTelemetry (default: true)
-- `USE_NEW_RELIC` - Enable New Relic APM (default: false)
-
-### OpenTelemetry Configuration
-All OTEL environment variables are supported:
-- `OTEL_SERVICE_NAME` - Service name for telemetry
-- `OTEL_EXPORTER_OTLP_ENDPOINT` - OTLP collector endpoint
-- `OTEL_EXPORTER_OTLP_HEADERS` - Headers for authentication
-- And many more (see `.env.example` for complete list)
-
 ### New Relic APM Configuration
 Native New Relic Java agent support:
 - `NEW_RELIC_LICENSE_KEY` - Your New Relic license key
-- `NEW_RELIC_APP_NAME` - Application name in New Relic
-- `NEW_RELIC_HOST` - Collector endpoint (e.g., staging-collector.newrelic.com)
-- `NEW_RELIC_LOG_LEVEL` - Agent log level
-
-See `AGENT_CONFIGURATION.md` for detailed agent setup guide.
+- `NEW_RELIC_APP_NAME` - Application name in New Relic (default: Oracle-HR-Portal-Java)
+- `NEW_RELIC_HOST` - Collector endpoint (default: collector.newrelic.com)
+- `NEW_RELIC_LOG_LEVEL` - Agent log level (default: info)
 
 ## API Endpoints
 
@@ -103,8 +87,8 @@ docker-compose down
 # Build the application
 mvn clean package
 
-# Run with OpenTelemetry agent
-java -javaagent:opentelemetry-javaagent.jar \\
+# Run with New Relic agent
+java -javaagent:newrelic/newrelic.jar \\
      -jar target/oracle-hr-portal-1.0.0.jar
 ```
 
@@ -132,8 +116,7 @@ oracle-java/
 │       ├── java/com/oracle/test/
 │       │   ├── OracleHrPortalApplication.java
 │       │   ├── config/
-│       │   │   ├── DatabaseConfig.java
-│       │   │   └── OpenTelemetryConfig.java
+│       │   │   └── DatabaseConfig.java
 │       │   ├── controller/
 │       │   │   ├── EmployeeController.java
 │       │   │   ├── DepartmentController.java
@@ -146,7 +129,8 @@ oracle-java/
 │       │       ├── ReportService.java
 │       │       └── JobService.java
 │       └── resources/
-│           └── application.properties
+│           ├── application.properties
+│           └── newrelic.yml
 ├── k6/
 │   └── scripts/
 │       └── load-test.js
@@ -156,47 +140,34 @@ oracle-java/
 └── README.md
 ```
 
-## APM Instrumentation
+## New Relic APM Instrumentation
 
-### OpenTelemetry (Default)
-The application uses:
-- OpenTelemetry Java agent for automatic instrumentation
-- Custom `@WithSpan` annotations for service methods
-- OTLP exporter for traces and metrics
-- All standard OTEL environment variables supported
-
-### New Relic APM (Optional)
-When enabled, provides:
+The application uses New Relic Java APM agent which provides:
 - Native New Relic Java agent instrumentation
 - Automatic code-level metrics
 - Transaction traces with SQL details
-- Error analytics
+- Error analytics and tracking
 - Application logs forwarding
-- JVM monitoring
+- JVM monitoring and metrics
+- Custom instrumentation support
 
-### Switching Agents
-Edit `.env` file:
-```bash
-# Use OpenTelemetry only (default)
-USE_OTEL=true
-USE_NEW_RELIC=false
+### Monitored Data in New Relic
 
-# Use New Relic APM only
-USE_OTEL=false
-USE_NEW_RELIC=true
-
-# Use both (maximum observability)
-USE_OTEL=true
-USE_NEW_RELIC=true
-```
-
-Then restart: `./deploy.sh restart`
-
-See `AGENT_CONFIGURATION.md` for detailed configuration guide.
+When running, check your New Relic dashboard:
+- **Application Name**: Oracle-HR-Portal-Java
+- **Environment**: Staging (configurable)
+- **Transactions**: All REST API endpoints
+- **Database**: SQL queries with execution times
+- **JVM**: Memory, GC, thread metrics
+- **Errors**: Exception tracking
+- **Logs**: Application logs with context
 
 ## Notes
 
-- This Java application maintains the same environment variables as the Node.js version
-- Uses HikariCP for connection pooling (same as Oracle Instant Client)
-- Spring Boot provides additional features like Actuator endpoints
-- OpenTelemetry Java agent provides comprehensive automatic instrumentation
+- Uses New Relic Java APM agent for comprehensive monitoring
+- All database queries are automatically instrumented
+- Transaction traces include full SQL statements (obfuscated)
+- Error tracking with full stack traces
+- Distributed tracing support
+- Real-time performance monitoring
+

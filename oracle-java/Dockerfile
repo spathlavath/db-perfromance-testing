@@ -14,22 +14,17 @@ RUN mvn clean package -DskipTests
 # Runtime stage
 FROM eclipse-temurin:17-jre-alpine
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Install curl and unzip for health checks and New Relic agent
+RUN apk add --no-cache curl unzip
 
 WORKDIR /app
 
 # Copy the built jar from builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-# Download OpenTelemetry Java agent
-ADD https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v1.32.0/opentelemetry-javaagent.jar /app/opentelemetry-javaagent.jar
-RUN chmod 644 /app/opentelemetry-javaagent.jar
-
 # Download New Relic Java agent
 ADD https://download.newrelic.com/newrelic/java-agent/newrelic-agent/current/newrelic-java.zip /tmp/newrelic-java.zip
-RUN apk add --no-cache unzip && \
-    unzip /tmp/newrelic-java.zip -d /app && \
+RUN unzip /tmp/newrelic-java.zip -d /app && \
     rm /tmp/newrelic-java.zip && \
     chmod 644 /app/newrelic/newrelic.jar
 
@@ -43,8 +38,11 @@ EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=10s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:3000/health || exit 1
 
-# Start script to handle both OTEL and New Relic agents
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
-
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+# Start the application with New Relic Java agent
+ENTRYPOINT ["java", \
+    "-javaagent:/app/newrelic/newrelic.jar", \
+    "-Xms512m", \
+    "-Xmx2048m", \
+    "-Djava.security.egd=file:/dev/./urandom", \
+    "-jar", \
+    "app.jar"]

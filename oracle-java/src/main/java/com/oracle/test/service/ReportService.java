@@ -1,6 +1,5 @@
 package com.oracle.test.service;
 
-import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -14,7 +13,6 @@ public class ReportService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @WithSpan("getSalaryByDepartment")
     public List<Map<String, Object>> getSalaryByDepartment() {
         String sql = "SELECT d.DEPARTMENT_NAME, " +
                      "COUNT(e.EMPLOYEE_ID) as EMPLOYEE_COUNT, " +

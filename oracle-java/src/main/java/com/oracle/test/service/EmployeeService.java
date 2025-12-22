@@ -1,6 +1,5 @@
 package com.oracle.test.service;
 
-import io.opentelemetry.instrumentation.annotations.WithSpan;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,7 +14,6 @@ public class EmployeeService {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
-    @WithSpan("getAllEmployees")
     public List<Map<String, Object>> getAllEmployees() {
         String sql = "SELECT e.EMPLOYEE_ID, e.FIRST_NAME, e.LAST_NAME, e.EMAIL, " +
                      "e.PHONE_NUMBER, e.HIRE_DATE, e.JOB_ID, e.SALARY, " +
@@ -26,7 +24,6 @@ public class EmployeeService {
         return jdbcTemplate.queryForList(sql);
     }
 
-    @WithSpan("getEmployeeById")
     public Map<String, Object> getEmployeeById(Long id) {
         String sql = "SELECT e.EMPLOYEE_ID, e.FIRST_NAME, e.LAST_NAME, e.EMAIL, " +
                      "e.PHONE_NUMBER, e.HIRE_DATE, e.JOB_ID, e.SALARY, " +
@@ -39,7 +36,6 @@ public class EmployeeService {
         return jdbcTemplate.queryForMap(sql, id);
     }
 
-    @WithSpan("createEmployee")
     @Transactional
     public Long createEmployee(Map<String, Object> employee) {
         String sql = "INSERT INTO EMPLOYEES (EMPLOYEE_ID, FIRST_NAME, LAST_NAME, EMAIL, " +
@@ -60,7 +56,6 @@ public class EmployeeService {
         return jdbcTemplate.queryForObject("SELECT EMPLOYEES_SEQ.CURRVAL FROM DUAL", Long.class);
     }
 
-    @WithSpan("updateEmployee")
     @Transactional
     public void updateEmployee(Long id, Map<String, Object> employee) {
         String sql = "UPDATE EMPLOYEES SET SALARY = ?, JOB_ID = ?, " +
@@ -73,7 +68,6 @@ public class EmployeeService {
                 id);
     }
 
-    @WithSpan("getEmployeeHistory")
     public List<Map<String, Object>> getEmployeeHistory(Long id) {
         String sql = "SELECT jh.*, j.JOB_TITLE, d.DEPARTMENT_NAME " +
                      "FROM JOB_HISTORY jh " +
@@ -84,7 +78,6 @@ public class EmployeeService {
         return jdbcTemplate.queryForList(sql, id);
     }
 
-    @WithSpan("promoteEmployee")
     @Transactional
     public void promoteEmployee(Long id, Map<String, Object> promotion) {
         // Insert into job history
