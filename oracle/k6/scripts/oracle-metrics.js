@@ -1,10 +1,20 @@
 /**
- * K6 Load Test - Oracle Metrics Stimulation
- * Stimulates all metrics collected by newrelicoraclereceiver
+ * K6 Load Test - Oracle Metrics Stimulation - Stress Testing Edition
+ * Stimulates all metrics collected by newrelicoraclereceiver under high load
+ * 
+ * This test generates intensive database operations to stress test:
+ * - CPU usage (parsing, sorting, complex queries)
+ * - Memory usage (large result sets, temp space)
+ * - I/O operations (disk reads/writes)
+ * - Lock contention and wait events
+ * 
+ * Stress Test Configuration:
+ * - Peak load: 100 concurrent virtual users
+ * - Duration: ~40 minutes total
+ * - Mix of light and heavy operations
  * 
  * Usage:
  *   k6 run oracle-metrics.js
- *   k6 run --vus 5 --duration 10m oracle-metrics.js
  *   API_URL=http://host:3000 k6 run oracle-metrics.js
  */
 
@@ -18,17 +28,27 @@ const diskIOCount = new Counter('disk_io_workload');
 const sortCount = new Counter('sort_workload');
 
 export const options = {
-  stages: [
-    { duration: '30s', target: 10 },  // Ramp up fast
-    { duration: '2m', target: 25 },   // Heavy load
-    { duration: '5m', target: 50 },   // Crazy load
-    { duration: '3m', target: 75 },   // Maximum load
-    { duration: '2m', target: 50 },   // Back down
-    { duration: '1m', target: 0 },    // Cool down
-  ],
+  scenarios: {
+    // Metrics stress test - aggressive ramping to generate all metric types
+    metrics_stress: {
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: [
+        { duration: '1m', target: 15 },   // Quick ramp to 15 VUs
+        { duration: '3m', target: 35 },   // Increase to 35 VUs
+        { duration: '5m', target: 60 },   // Heavy load at 60 VUs
+        { duration: '8m', target: 100 },  // Maximum stress at 100 VUs
+        { duration: '5m', target: 80 },   // Sustain high load
+        { duration: '3m', target: 40 },   // Step down
+        { duration: '2m', target: 0 },    // Cool down
+      ],
+      gracefulRampDown: '30s',
+    },
+  },
   thresholds: {
-    http_req_duration: ['p(95)<30000'],
-    errors: ['rate<0.3'],
+    http_req_duration: ['p(95)<30000'],  // Allow longer response times under stress
+    http_req_failed: ['rate<0.3'],       // Allow up to 30% failures during peak stress
+    errors: ['rate<0.4'],                // Higher error tolerance for stress test
   },
 };
 

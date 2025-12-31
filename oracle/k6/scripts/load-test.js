@@ -1,14 +1,21 @@
 /**
- * K6 Load Test for Oracle HR Portal
- * Tests realistic HR operations across multiple endpoints
+ * K6 Load Test for Oracle HR Portal - Stress Testing Edition
+ * Tests realistic HR operations across multiple endpoints with high concurrency
  * 
- * This generates diverse database span traces:
+ * This generates diverse database span traces under stress:
  * - SELECT queries (simple, with JOINs, with aggregation)
  * - INSERT operations
  * - UPDATE operations  
  * - Complex transactions
  * 
- * Run with: k6 run --vus 5 --duration 30m hr-portal-load-test.js
+ * Stress Test Configuration:
+ * - Gradually ramps up from 0 to 100 virtual users
+ * - Peak load: 100 concurrent users
+ * - Total duration: ~40 minutes
+ * - Designed to stress test CPU and memory usage
+ * 
+ * Run with: k6 run load-test.js
+ * Or via Docker Compose: docker-compose up k6
  */
 
 import http from 'k6/http';
@@ -25,16 +32,29 @@ const salaryReportDuration = new Trend('salary_report_duration');
 // Configuration
 const BASE_URL = __ENV.BASE_URL || 'http://oracle-test-app:3000';
 
-// Test options
+// Test options - Stress Testing Configuration
 export const options = {
-  stages: [
-    { duration: '2m', target: 3 },   // Ramp up to 3 VUs
-    { duration: '25m', target: 5 },  // Stay at 5 VUs
-    { duration: '3m', target: 0 },   // Ramp down
-  ],
+  scenarios: {
+    // Stress test scenario - gradually increase load to stress CPU and memory
+    stress_test: {
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: [
+        { duration: '2m', target: 10 },   // Warm up to 10 VUs
+        { duration: '5m', target: 25 },   // Ramp up to 25 VUs
+        { duration: '10m', target: 50 },  // Increase to 50 VUs
+        { duration: '10m', target: 75 },  // Peak load at 75 VUs
+        { duration: '5m', target: 100 },  // Maximum stress at 100 VUs
+        { duration: '5m', target: 75 },   // Step down
+        { duration: '3m', target: 0 },    // Cool down
+      ],
+      gracefulRampDown: '30s',
+    },
+  },
   thresholds: {
-    'http_req_duration': ['p(95)<2000'], // 95% of requests should be below 2s
-    'errors': ['rate<0.1'],              // Error rate should be below 10%
+    'http_req_duration': ['p(95)<5000'], // 95% of requests should be below 5s under stress
+    'http_req_failed': ['rate<0.15'],    // Allow up to 15% failures under extreme stress
+    'errors': ['rate<0.2'],              // Error rate should be below 20% under stress
   },
 };
 

@@ -85,9 +85,10 @@ services:
       start_period: 60s
 
   k6:
-    image: grafana/k6
+    image: grafana/k6:latest
     volumes:
       - ./k6/scripts:/scripts
+      - ./k6/results:/results
     environment:
       - BASE_URL=http://oracle-test-app:3000
       - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}

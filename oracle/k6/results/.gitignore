@@ -1,0 +1,4 @@
+# K6 test results will be stored here
+*.json
+*.csv
+*.txt

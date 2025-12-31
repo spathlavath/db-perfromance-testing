@@ -213,6 +213,75 @@ curl -X POST http://localhost:3000/workload/start \
 curl -X POST http://localhost:3000/workload/stop
 ```
 
+## K6 Load and Stress Testing
+
+This project includes K6 test scripts for load and stress testing the Oracle database application.
+
+### Available Test Scripts
+
+#### 1. **Standard Load Test** (`load-test.js`)
+Simulates realistic user traffic with gradual load increase.
+- **Max Users**: 100 concurrent virtual users
+- **Duration**: ~40 minutes
+- **Best For**: Application performance baseline, realistic user behavior
+
+#### 2. **Oracle Metrics Test** (`oracle-metrics.js`)
+Generates all Oracle database metrics under stress.
+- **Max Users**: 100 concurrent virtual users
+- **Duration**: ~27 minutes
+- **Workloads**: 24 different types (parse, I/O, sorts, locks, etc.)
+- **Best For**: Database receiver testing, comprehensive metrics validation
+
+### Running K6 Tests
+
+```bash
+# Using Docker Compose (default: runs load-test.js)
+docker-compose up k6
+
+# Using K6 CLI directly
+export BASE_URL=http://localhost:3000
+
+# Run standard load test
+k6 run k6/scripts/load-test.js
+
+# Run Oracle metrics test
+k6 run k6/scripts/oracle-metrics.js
+```
+
+### Monitoring During Tests
+
+**Application Logs:**
+```bash
+docker-compose logs -f oracle-test-app
+```
+
+**VM Resources:**
+```bash
+# Monitor CPU and memory
+htop
+# or
+top
+
+# Docker container stats
+docker stats
+```
+
+**Database Metrics:**
+```sql
+-- Active sessions
+SELECT COUNT(*) FROM v$session WHERE status = 'ACTIVE';
+
+-- CPU usage
+SELECT value FROM v$sysmetric WHERE metric_name = 'Host CPU Utilization (%)';
+
+-- Connection pool
+SELECT * FROM v$resource_limit WHERE resource_name = 'processes';
+```
+
+For detailed K6 documentation, see [k6/README.md](k6/README.md).
+
+---
+
 ## Docker Commands
 
 ```bash
@@ -342,8 +411,11 @@ oracle/
 │       ├── lock-workload.js        # Lock scenario tests
 │       └── memory-workload.js      # Memory usage tests
 ├── k6/
-│   └── scripts/
-│       └── load-test.js            # K6 load testing script
+│   ├── scripts/
+│   │   ├── load-test.js            # Standard load test (100 VUs)
+│   │   ├── oracle-metrics.js       # Oracle metrics stimulation (100 VUs)
+│   │   └── cpu-memory-stress-test.js # CPU/Memory stress test (160+ VUs)
+│   └── README.md                   # K6 testing documentation
 ├── docker-compose.yml              # Docker Compose configuration
 ├── cleanup.sh                      # Cleanup script
 ├── .env.example                    # Environment variables template
