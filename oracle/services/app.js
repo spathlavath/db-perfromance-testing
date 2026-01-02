@@ -67,13 +67,13 @@ const dbConfig = {
   user: process.env.ORACLE_USER || 'system',
   password: process.env.ORACLE_PASSWORD,
   connectString: process.env.ORACLE_CONNECT_STRING || 'localhost:1521/FREEPDB1',
-  poolMin: parseInt(process.env.POOL_MIN) || 10,  // Increased from 5 to handle concurrent workloads
-  poolMax: parseInt(process.env.POOL_MAX) || 50,  // Increased from 30 to prevent pool exhaustion
-  poolIncrement: parseInt(process.env.POOL_INCREMENT) || 5,  // Increased from 2 for faster scaling
-  poolTimeout: parseInt(process.env.POOL_TIMEOUT) || 120,  // Increased from 60 for long-running queries
-  queueTimeout: parseInt(process.env.QUEUE_TIMEOUT) || 300000,  // Increased to 5 minutes from 3 minutes
+  poolMin: parseInt(process.env.POOL_MIN) || 50,  // Start with 50 connections for immediate high load
+  poolMax: parseInt(process.env.POOL_MAX) || 200,  // Support up to 200 VUs with connections available
+  poolIncrement: parseInt(process.env.POOL_INCREMENT) || 10,  // Scale faster (10 at a time)
+  poolTimeout: parseInt(process.env.POOL_TIMEOUT) || 60,  // Release idle connections after 60s
+  queueTimeout: parseInt(process.env.QUEUE_TIMEOUT) || 120000,  // 2 minutes max wait for connection
   enableStatistics: true,  // Enable pool statistics for debugging
-  queueMax: -1  // Unlimited queue (will wait as long as queueTimeout allows)
+  queueMax: 500  // Limit queue to prevent memory issues, fail fast if overwhelmed
 };
 
 // Initialize connection pool
