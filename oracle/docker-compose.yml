@@ -91,6 +91,7 @@ services:
       - ./k6/results:/results
     environment:
       - BASE_URL=http://oracle-test-app:3000
+      - TEST_INTENSITY=${TEST_INTENSITY:-medium}
       - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}
       - DETAILED_RESPONSE_LOGGING=${K6_DETAILED_LOGGING:-false}
       - LOG_SLOW_REQUESTS_MS=${K6_LOG_SLOW_REQUESTS_MS:-5000}
@@ -99,8 +100,8 @@ services:
         condition: service_healthy
     networks:
       - oracle-network
-    # Run HR portal load test (removed sh -c which causes error)
-    command: run /scripts/load-test.js
+    # Run HR portal load test based on TEST_INTENSITY (low, medium, high, stress, max)
+    entrypoint: ["/scripts/run-test.sh"]
 
 networks:
   oracle-network:

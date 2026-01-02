@@ -31,31 +31,91 @@ const salaryReportDuration = new Trend('salary_report_duration');
 
 // Configuration
 const BASE_URL = __ENV.BASE_URL || 'http://oracle-test-app:3000';
+const TEST_INTENSITY = __ENV.TEST_INTENSITY || 'medium';
 
-// Test options - Stress Testing Configuration
-export const options = {
-  scenarios: {
-    // Stress test scenario - gradually increase load to stress CPU and memory
-    stress_test: {
-      executor: 'ramping-vus',
-      startVUs: 0,
-      stages: [
-        { duration: '2m', target: 10 },   // Warm up to 10 VUs
-        { duration: '5m', target: 25 },   // Ramp up to 25 VUs
-        { duration: '10m', target: 50 },  // Increase to 50 VUs
-        { duration: '10m', target: 75 },  // Peak load at 75 VUs
-        { duration: '5m', target: 100 },  // Maximum stress at 100 VUs
-        { duration: '5m', target: 75 },   // Step down
-        { duration: '3m', target: 0 },    // Cool down
-      ],
-      gracefulRampDown: '30s',
+// Intensity configuration profiles
+const intensityProfiles = {
+  low: {
+    vus: 20,
+    duration: '30m',
+    thinkTime: { min: 3, max: 5 },
+    thresholds: {
+      'http_req_duration': ['p(95)<3000'],
+      'http_req_failed': ['rate<0.05'],
+      'errors': ['rate<0.05'],
     },
   },
-  thresholds: {
-    'http_req_duration': ['p(95)<5000'], // 95% of requests should be below 5s under stress
-    'http_req_failed': ['rate<0.15'],    // Allow up to 15% failures under extreme stress
-    'errors': ['rate<0.2'],              // Error rate should be below 20% under stress
+  medium: {
+    vus: 50,
+    duration: '30m',
+    thinkTime: { min: 1, max: 3 },
+    thresholds: {
+      'http_req_duration': ['p(95)<4000'],
+      'http_req_failed': ['rate<0.10'],
+      'errors': ['rate<0.10'],
+    },
   },
+  high: {
+    vus: 120,
+    duration: '30m',
+    thinkTime: { min: 0.5, max: 2 },
+    thresholds: {
+      'http_req_duration': ['p(95)<5000'],
+      'http_req_failed': ['rate<0.12'],
+      'errors': ['rate<0.12'],
+    },
+  },
+  stress: {
+    stages: [
+      { duration: '2m', target: 50 },
+      { duration: '5m', target: 100 },
+      { duration: '10m', target: 200 },
+      { duration: '10m', target: 300 },
+      { duration: '5m', target: 400 },
+      { duration: '3m', target: 0 },
+    ],
+    thinkTime: { min: 0.1, max: 0.5 },
+    thresholds: {
+      'http_req_duration': ['p(95)<8000'],
+      'http_req_failed': ['rate<0.20'],
+      'errors': ['rate<0.25'],
+    },
+  },
+  max: {
+    stages: [
+      { duration: '1m', target: 100 },
+      { duration: '5m', target: 300 },
+      { duration: '5m', target: 500 },
+      { duration: '2m', target: 0 },
+    ],
+    thinkTime: { min: 0, max: 0 },
+    thresholds: {
+      'http_req_duration': ['p(95)<10000'],
+      'http_req_failed': ['rate<0.30'],
+      'errors': ['rate<0.30'],
+    },
+  },
+};
+
+// Get current profile
+const profile = intensityProfiles[TEST_INTENSITY] || intensityProfiles.medium;
+
+// Build options based on profile
+export const options = {
+  scenarios: {
+    hr_portal_test: {
+      executor: profile.stages ? 'ramping-vus' : 'constant-vus',
+      ...(profile.stages ? { 
+        startVUs: 0, 
+        stages: profile.stages,
+        gracefulRampDown: '30s',
+      } : {
+        vus: profile.vus,
+        duration: profile.duration,
+      }),
+    },
+  },
+  thresholds: profile.thresholds,
 };
 
 // Sample data for creating employees
@@ -214,32 +274,139 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // Random sleep between 1-3 seconds to simulate real user behavior
-  sleep(Math.random() * 2 + 1);
+  // Random sleep based on intensity profile
+  const thinkTime = profile.thinkTime;
+  sleep(Math.random() * (thinkTime.max - thinkTime.min) + thinkTime.min);
 }
 
 export function handleSummary(data) {
-  console.log('');
-  console.log('='.repeat(80));
-  console.log('📊 Oracle HR Portal Load Test Summary');
-  console.log('='.repeat(80));
-  console.log('');
-  console.log('Database Operations Tested:');
-  console.log('  ✓ SELECT with JOIN (employee list)');
-  console.log('  ✓ SELECT with multiple JOINs (employee details)');
-  console.log('  ✓ SELECT with aggregation (department stats)');
-  console.log('  ✓ SELECT with filter (department employees)');
-  console.log('  ✓ Complex SELECT with GROUP BY (salary report)');
-  console.log('  ✓ Simple SELECT (jobs list)');
-  console.log('  ✓ INSERT (create employee)');
-  console.log('  ✓ UPDATE (update employee)');
-  console.log('  ✓ Transaction (promote employee)');
-  console.log('  ✓ SELECT with date filter (job history)');
-  console.log('');
-  console.log('These operations will generate diverse database spans in New Relic!');
-  console.log('='.repeat(80));
+  const metrics = data.metrics;
   
+  // Calculate key statistics
+  const totalRequests = metrics.http_reqs.values.count;
+  const failedRequests = metrics.http_req_failed.values.passes;
+  const successRate = ((totalRequests - failedRequests) / totalRequests * 100).toFixed(2);
+  const avgDuration = (metrics.http_req_duration.values.avg / 1000).toFixed(2);
+  const p95Duration = (metrics.http_req_duration.values.p95 / 1000).toFixed(2);
+  const reqPerSec = metrics.http_reqs.values.rate.toFixed(2);
+  const testDuration = (data.state.testRunDurationMs / 1000 / 60).toFixed(1);
+  const maxVUs = metrics.vus_max.values.max;
+  const totalIterations = metrics.iterations.values.count;
+  
+  // Calculate checks pass rate
+  const checksRate = (metrics.checks.values.rate * 100).toFixed(2);
+  const checksPassed = metrics.checks.values.passes;
+  const checksFailed = metrics.checks.values.fails;
+  
+  console.log('');
+  console.log('╔════════════════════════════════════════════════════════════════════════════╗');
+  console.log('║                    📊 K6 LOAD TEST RESULTS SUMMARY                         ║');
+  console.log('╚════════════════════════════════════════════════════════════════════════════╝');
+  console.log('');
+  console.log(`🎯 Test Configuration:`);
+  console.log(`   Intensity Level: ${TEST_INTENSITY.toUpperCase()}`);
+  console.log(`   Test Duration:   ${testDuration} minutes`);
+  console.log(`   Max Virtual Users: ${maxVUs}`);
+  console.log('');
+  console.log('═'.repeat(80));
+  console.log('');
+  console.log(`📈 PERFORMANCE METRICS:`);
+  console.log('');
+  console.log(`   Total Requests:      ${totalRequests.toLocaleString()}`);
+  console.log(`   Requests/Second:     ${reqPerSec}/s`);
+  console.log(`   Total Iterations:    ${totalIterations.toLocaleString()}`);
+  console.log('');
+  console.log(`   ✅ Successful:        ${(totalRequests - failedRequests).toLocaleString()} (${successRate}%)`);
+  console.log(`   ❌ Failed:            ${failedRequests.toLocaleString()} (${(100 - successRate).toFixed(2)}%)`);
+  console.log('');
+  console.log('═'.repeat(80));
+  console.log('');
+  console.log(`⏱️  RESPONSE TIME METRICS:`);
+  console.log('');
+  console.log(`   Average Response:    ${avgDuration}s`);
+  console.log(`   Median Response:     ${(metrics.http_req_duration.values.med / 1000).toFixed(2)}s`);
+  console.log(`   95th Percentile:     ${p95Duration}s`);
+  console.log(`   Min Response:        ${(metrics.http_req_duration.values.min / 1000).toFixed(2)}s`);
+  console.log(`   Max Response:        ${(metrics.http_req_duration.values.max / 1000).toFixed(2)}s`);
+  console.log('');
+  
+  // Performance verdict
+  const p95Threshold = profile.thresholds['http_req_duration'][0].match(/\d+/)[0];
+  const p95Pass = metrics.http_req_duration.values.p95 < p95Threshold;
+  
+  console.log('═'.repeat(80));
+  console.log('');
+  console.log(`🎯 TEST CHECKS (Validation Tests):`);
+  console.log('');
+  console.log(`   Total Checks:        ${checksPassed + checksFailed}`);
+  console.log(`   ✅ Passed:            ${checksPassed} (${checksRate}%)`);
+  console.log(`   ❌ Failed:            ${checksFailed} (${(100 - checksRate).toFixed(2)}%)`);
+  console.log('');
+  console.log('═'.repeat(80));
+  console.log('');
+  console.log(`🎭 OVERALL TEST RESULT:`);
+  console.log('');
+  
+  const allThresholdsPassed = 
+    metrics.http_req_duration.thresholds[`p(95)<${p95Threshold}`].ok &&
+    metrics.http_req_failed.thresholds['rate<0.15'].ok &&
+    metrics.errors.thresholds['rate<0.2'].ok;
+  
+  if (allThresholdsPassed) {
+    console.log(`   🎉 SUCCESS! All performance thresholds met.`);
+  } else {
+    console.log(`   ⚠️  THRESHOLDS NOT MET - System under stress`);
+    console.log('');
+    console.log(`   Threshold Status:`);
+    console.log(`   - Response Time (p95 < ${p95Threshold/1000}s):  ${p95Pass ? '✅ PASS' : '❌ FAIL'} (actual: ${p95Duration}s)`);
+    console.log(`   - Error Rate (< 15%):          ${metrics.http_req_failed.thresholds['rate<0.15'].ok ? '✅ PASS' : '❌ FAIL'} (actual: ${(100 - successRate).toFixed(2)}%)`);
+    console.log(`   - Check Success (> 80%):       ${metrics.errors.thresholds['rate<0.2'].ok ? '✅ PASS' : '❌ FAIL'} (actual: ${checksRate}%)`);
+  }
+  
+  console.log('');
+  console.log('═'.repeat(80));
+  console.log('');
+  console.log(`💡 RECOMMENDATIONS:`);
+  console.log('');
+  
+  if (parseFloat(successRate) < 90) {
+    console.log(`   ⚠️  High failure rate detected (${(100 - successRate).toFixed(2)}%):`);
+    console.log(`      • Consider increasing database connection pool size`);
+    console.log(`      • Check application and database logs for errors`);
+    console.log(`      • May need to scale resources or optimize queries`);
+  } else if (parseFloat(p95Duration) > p95Threshold / 1000) {
+    console.log(`   ⚠️  Response times exceed threshold:`);
+    console.log(`      • Review slow queries in application logs`);
+    console.log(`      • Consider adding database indexes`);
+    console.log(`      • Check for resource bottlenecks (CPU/Memory)`);
+  } else {
+    console.log(`   ✅ System performing well at ${TEST_INTENSITY.toUpperCase()} intensity!`);
+    console.log(`      • Success rate: ${successRate}%`);
+    console.log(`      • Response times within acceptable range`);
+    console.log(`      • Consider testing higher intensity if needed`);
+  }
+  
+  console.log('');
+  console.log('═'.repeat(80));
+  console.log('');
+  console.log(`📋 DATABASE OPERATIONS TESTED:`);
+  console.log('');
+  console.log(`   ✓ SELECT with JOIN (employee list)`);
+  console.log(`   ✓ SELECT with multiple JOINs (employee details)`);
+  console.log(`   ✓ SELECT with aggregation (department stats)`);
+  console.log(`   ✓ SELECT with filter (department employees)`);
+  console.log(`   ✓ Complex SELECT with GROUP BY (salary report)`);
+  console.log(`   ✓ Simple SELECT (jobs list)`);
+  console.log(`   ✓ INSERT (create employee)`);
+  console.log(`   ✓ UPDATE (update employee)`);
+  console.log(`   ✓ Transaction (promote employee)`);
+  console.log(`   ✓ SELECT with date filter (job history)`);
+  console.log('');
+  console.log('╚════════════════════════════════════════════════════════════════════════════╝');
+  console.log('');
+  
+  // Return empty object to suppress default JSON output
   return {
-    'stdout': JSON.stringify(data, null, 2),
+    'stdout': '', // This suppresses the verbose JSON output
   };
 }
