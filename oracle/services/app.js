@@ -218,10 +218,13 @@ app.get('/pool-stats', (req, res) => {
 // HR Portal Endpoints - Realistic business operations
 // ============================================================================
 
-// 1. GET /employees - List all employees (SELECT with JOIN)
+// 1. GET /employees - List all employees (SELECT with JOIN) - PAGINATED
 app.get('/employees', async (req, res) => {
   let connection;
   try {
+    const limit = parseInt(req.query.limit) || 100; // Default 100 rows for performance
+    const offset = parseInt(req.query.offset) || 0;
+    
     connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT e.employee_id, e.first_name, e.last_name, e.email, e.phone_number,
@@ -229,11 +232,12 @@ app.get('/employees', async (req, res) => {
        FROM employees e
        LEFT JOIN jobs j ON e.job_id = j.job_id
        LEFT JOIN departments d ON e.department_id = d.department_id
-       ORDER BY e.employee_id`,
-      [],
+       ORDER BY e.employee_id
+       OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
+      [offset, limit],
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
-    res.json({ count: result.rows.length, employees: result.rows });
+    res.json({ count: result.rows.length, limit: limit, offset: offset, employees: result.rows });
   } catch (err) {
     logger.error('Error fetching employees:', err);
     res.status(500).json({ error: err.message });
@@ -334,6 +338,9 @@ app.put('/employees/:id', async (req, res) => {
 app.get('/departments', async (req, res) => {
   let connection;
   try {
+    const limit = parseInt(req.query.limit) || 50; // Default 50 rows for performance
+    const offset = parseInt(req.query.offset) || 0;
+    
     connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT d.department_id, d.department_name, d.manager_id,
@@ -342,11 +349,12 @@ app.get('/departments', async (req, res) => {
        FROM departments d
        LEFT JOIN employees e ON d.department_id = e.department_id
        GROUP BY d.department_id, d.department_name, d.manager_id
-       ORDER BY d.department_id`,
-      [],
+       ORDER BY d.department_id
+       OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
+      [offset, limit],
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
-    res.json({ count: result.rows.length, departments: result.rows });
+    res.json({ count: result.rows.length, limit: limit, offset: offset, departments: result.rows });
   } catch (err) {
     logger.error('Error fetching departments:', err);
     res.status(500).json({ error: err.message });
