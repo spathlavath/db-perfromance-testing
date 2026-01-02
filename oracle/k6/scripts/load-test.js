@@ -34,63 +34,53 @@ const TEST_INTENSITY = __ENV.TEST_INTENSITY || 'medium';
 // Intensity configuration profiles
 const intensityProfiles = {
   low: {
-    vus: 20,
-    duration: '30m',
-    thinkTime: { min: 3, max: 5 },
+    vus: 50,
+    duration: '10m',
+    thinkTime: { min: 0.5, max: 1 },
     thresholds: {
-      'http_req_duration': ['p(95)<3000'],
+      'http_req_duration': ['p(95)<2000', 'p(99)<3000'],
       'http_req_failed': ['rate<0.05'],
       'errors': ['rate<0.05'],
     },
   },
   medium: {
-    vus: 50,
-    duration: '30m',
-    thinkTime: { min: 1, max: 3 },
+    vus: 200,
+    duration: '10m',
+    thinkTime: { min: 0.3, max: 0.8 },
     thresholds: {
-      'http_req_duration': ['p(95)<4000'],
-      'http_req_failed': ['rate<0.10'],
-      'errors': ['rate<0.10'],
+      'http_req_duration': ['p(95)<2500', 'p(99)<3500'],
+      'http_req_failed': ['rate<0.05'],
+      'errors': ['rate<0.05'],
     },
   },
   high: {
-    vus: 120,
-    duration: '30m',
-    thinkTime: { min: 0.5, max: 2 },
+    vus: 500,
+    duration: '10m',
+    thinkTime: { min: 0.2, max: 0.5 },
     thresholds: {
-      'http_req_duration': ['p(95)<5000'],
-      'http_req_failed': ['rate<0.12'],
-      'errors': ['rate<0.12'],
+      'http_req_duration': ['p(95)<3000', 'p(99)<4000'],
+      'http_req_failed': ['rate<0.05'],
+      'errors': ['rate<0.05'],
     },
   },
   stress: {
-    stages: [
-      { duration: '2m', target: 50 },
-      { duration: '5m', target: 100 },
-      { duration: '10m', target: 200 },
-      { duration: '10m', target: 300 },
-      { duration: '5m', target: 400 },
-      { duration: '3m', target: 0 },
-    ],
-    thinkTime: { min: 0.1, max: 0.5 },
+    vus: 1000,
+    duration: '10m',
+    thinkTime: { min: 0.1, max: 0.3 },
     thresholds: {
-      'http_req_duration': ['p(95)<8000'],
-      'http_req_failed': ['rate<0.20'],
-      'errors': ['rate<0.25'],
+      'http_req_duration': ['p(95)<4000', 'p(99)<5000'],
+      'http_req_failed': ['rate<0.05'],
+      'errors': ['rate<0.05'],
     },
   },
   max: {
-    stages: [
-      { duration: '1m', target: 100 },
-      { duration: '5m', target: 300 },
-      { duration: '5m', target: 500 },
-      { duration: '2m', target: 0 },
-    ],
-    thinkTime: { min: 0, max: 0 },
+    vus: 2000,
+    duration: '10m',
+    thinkTime: { min: 0.05, max: 0.2 },
     thresholds: {
-      'http_req_duration': ['p(95)<10000'],
-      'http_req_failed': ['rate<0.30'],
-      'errors': ['rate<0.30'],
+      'http_req_duration': ['p(95)<6000', 'p(99)<8000'],
+      'http_req_failed': ['rate<0.10'],
+      'errors': ['rate<0.10'],
     },
   },
 };
@@ -102,15 +92,9 @@ const profile = intensityProfiles[TEST_INTENSITY] || intensityProfiles.medium;
 export const options = {
   scenarios: {
     hr_portal_test: {
-      executor: profile.stages ? 'ramping-vus' : 'constant-vus',
-      ...(profile.stages ? { 
-        startVUs: 0, 
-        stages: profile.stages,
-        gracefulRampDown: '30s',
-      } : {
-        vus: profile.vus,
-        duration: profile.duration,
-      }),
+      executor: 'constant-vus',
+      vus: profile.vus,
+      duration: profile.duration,
     },
   },
   thresholds: profile.thresholds,
@@ -258,7 +242,8 @@ export function handleSummary(data) {
   console.log('');
   console.log(`   Average Response:    ${avgDuration}s`);
   console.log(`   Median Response:     ${(metrics.http_req_duration.values.med / 1000).toFixed(2)}s`);
-  console.log(`   95th Percentile:     ${p95Duration}s`);
+  console.log(`   p(95):               ${p95Duration}s`);
+  console.log(`   p(99):               ${(metrics.http_req_duration.values['p(99)'] / 1000).toFixed(2)}s`);
   console.log(`   Min Response:        ${(metrics.http_req_duration.values.min / 1000).toFixed(2)}s`);
   console.log(`   Max Response:        ${(metrics.http_req_duration.values.max / 1000).toFixed(2)}s`);
   console.log('');
