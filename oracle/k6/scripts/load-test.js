@@ -134,8 +134,6 @@ export const options = {
     },
   },
   thresholds: profile.thresholds,
-  // Increase timeout for slow responses
-  timeout: '120s',
 };
 
 // Sample data for creating employees
@@ -160,9 +158,13 @@ export default function() {
     check(res, {
       'employee list status 200': (r) => r.status === 200,
       'employee list has data': (r) => {
-        if (!r.body) return false;
-        const data = JSON.parse(r.body);
-        return data.employees && data.employees.length > 0;
+        if (!r.body || r.status !== 200) return false;
+        try {
+          const data = JSON.parse(r.body);
+          return data.employees && data.employees.length > 0;
+        } catch (e) {
+          return false;
+        }
       },
     }) || errorRate.add(1);
   }
@@ -184,9 +186,13 @@ export default function() {
     check(res, {
       'department list status 200': (r) => r.status === 200,
       'departments have stats': (r) => {
-        if (!r.body) return false;
-        const data = JSON.parse(r.body);
-        return data.departments && data.departments.length > 0;
+        if (!r.body || r.status !== 200) return false;
+        try {
+          const data = JSON.parse(r.body);
+          return data.departments && data.departments.length > 0;
+        } catch (e) {
+          return false;
+        }
       },
     }) || errorRate.add(1);
   }
@@ -207,9 +213,13 @@ export default function() {
     check(res, {
       'salary report status 200': (r) => r.status === 200,
       'report has data': (r) => {
-        if (!r.body) return false;
-        const data = JSON.parse(r.body);
-        return data.report && data.report.length > 0;
+        if (!r.body || r.status !== 200) return false;
+        try {
+          const data = JSON.parse(r.body);
+          return data.report && data.report.length > 0;
+        } catch (e) {
+          return false;
+        }
       },
     }) || errorRate.add(1);
   }
@@ -246,17 +256,14 @@ export default function() {
 export function handleSummary(data) {
   const metrics = data.metrics;
   
-  // Debug: Log available percentile keys
-  console.log('\nDEBUG - Available http_req_duration values keys:', Object.keys(metrics.http_req_duration.values));
-  
   // Calculate key statistics
   const totalRequests = metrics.http_reqs.values.count;
   const failedRequests = metrics.http_req_failed.values.passes;
   const successRate = ((totalRequests - failedRequests) / totalRequests * 100).toFixed(2);
   const avgDuration = (metrics.http_req_duration.values.avg / 1000).toFixed(2);
   const p95Duration = (metrics.http_req_duration.values['p(95)'] / 1000).toFixed(2);
-  // p(99) might be stored without parentheses or need explicit calculation
-  const p99Value = metrics.http_req_duration.values['p(99)'] || metrics.http_req_duration.values.p99 || null;
+  // p(99) - use p(90) as fallback if p(99) not available
+  const p99Value = metrics.http_req_duration.values['p(99)'] || metrics.http_req_duration.values['p(90)'];
   const p99Duration = p99Value ? (p99Value / 1000).toFixed(2) : 'N/A';
   const reqPerSec = metrics.http_reqs.values.rate.toFixed(2);
   const testDuration = (data.state.testRunDurationMs / 1000 / 60).toFixed(1);
