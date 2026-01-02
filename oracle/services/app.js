@@ -48,10 +48,14 @@ const express = require('express');
 
 // Initialize Oracle Thick Mode - MUST be called before any oracledb operations
 try {
-  oracledb.initOracleClient();
-  console.log('✅ Oracle Thick Mode initialized successfully');
+  // Explicitly set the library directory path
+  const libDir = '/usr/src/app/instantclient_21_13';
+  oracledb.initOracleClient({ libDir: libDir });
+  console.log('✅ Oracle Thick Mode initialized successfully with libDir:', libDir);
+  console.log('Oracle Client Version:', oracledb.oracleClientVersion);
 } catch (err) {
   console.error('⚠️  Failed to initialize Oracle Thick Mode:', err.message);
+  console.error('Full error:', err);
   console.log('ℹ️  Continuing in Thin Mode (encryption may not be supported)');
 }
 
