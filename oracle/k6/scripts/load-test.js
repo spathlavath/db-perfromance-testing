@@ -1,18 +1,16 @@
 /**
- * K6 Load Test for Oracle HR Portal - Stress Testing Edition
- * Tests realistic HR operations across multiple endpoints with high concurrency
+ * K6 Load Test for Oracle HR Portal - SELECT Queries Only
+ * Tests realistic HR read operations across multiple endpoints with high concurrency
  * 
- * This generates diverse database span traces under stress:
- * - SELECT queries (simple, with JOINs, with aggregation)
- * - INSERT operations
- * - UPDATE operations  
- * - Complex transactions
+ * This generates diverse SELECT database span traces under stress:
+ * - Simple SELECT queries
+ * - SELECT with JOINs (single and multiple)
+ * - SELECT with aggregation (GROUP BY, COUNT, AVG, SUM)
+ * - SELECT with filtering (WHERE clauses)
+ * - SELECT with date filters
+ * - Complex queries with subqueries
  * 
- * Stress Test Configuration:
- * - Gradually ramps up from 0 to 100 virtual users
- * - Peak load: 100 concurrent users
- * - Total duration: ~40 minutes
- * - Designed to stress test CPU and memory usage
+ * NOTE: INSERT, UPDATE, DELETE operations are commented out for SELECT-only testing
  * 
  * Run with: k6 run load-test.js
  * Or via Docker Compose: docker-compose up k6
@@ -133,8 +131,8 @@ function generateEmail(firstName, lastName) {
 export default function() {
   const scenario = Math.random();
   
-  // 1. List Employees (30% of requests) - SELECT with JOIN
-  if (scenario < 0.30) {
+  // 1. List Employees (18% of requests) - SELECT with JOIN
+  if (scenario < 0.18) {
     const res = http.get(`${BASE_URL}/employees`);
     employeeListDuration.add(res.timings.duration);
     check(res, {
@@ -143,9 +141,8 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 2. Get Employee Details (25% of requests) - SELECT with multiple JOINs
-  else if (scenario < 0.55) {
-    // Random employee ID between 100-206 (typical HR schema range)
+  // 2. Get Employee Details (15% of requests) - SELECT with multiple JOINs
+  else if (scenario < 0.33) {
     const employeeId = Math.floor(Math.random() * 107) + 100;
     const res = http.get(`${BASE_URL}/employees/${employeeId}`);
     employeeDetailDuration.add(res.timings.duration);
@@ -154,8 +151,8 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 3. List Departments with Stats (15% of requests) - SELECT with aggregation
-  else if (scenario < 0.70) {
+  // 3. List Departments with Stats (12% of requests) - SELECT with aggregation
+  else if (scenario < 0.45) {
     const res = http.get(`${BASE_URL}/departments`);
     departmentListDuration.add(res.timings.duration);
     check(res, {
@@ -168,8 +165,7 @@ export default function() {
   }
   
   // 4. Get Department Employees (10% of requests) - SELECT with filter
-  else if (scenario < 0.80) {
-    // Random department ID between 10-110 (typical range)
+  else if (scenario < 0.55) {
     const deptId = (Math.floor(Math.random() * 11) + 1) * 10;
     const res = http.get(`${BASE_URL}/departments/${deptId}/employees`);
     check(res, {
@@ -177,8 +173,8 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 5. Salary Report (5% of requests) - Complex aggregation query
-  else if (scenario < 0.85) {
+  // 5. Salary Report (8% of requests) - Complex aggregation with GROUP BY
+  else if (scenario < 0.63) {
     const res = http.get(`${BASE_URL}/reports/salary-by-department`);
     salaryReportDuration.add(res.timings.duration);
     check(res, {
@@ -187,38 +183,53 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 6. Get Jobs List (5% of requests) - Simple SELECT
-  else if (scenario < 0.90) {
-    const res = http.get(`${BASE_URL}/jobs`);
+  // 6. Employee Rankings (7% of requests) - SELECT with window functions (ROW_NUMBER, RANK)
+  else if (scenario < 0.70) {
+    const deptId = (Math.floor(Math.random() * 11) + 1) * 10;
+    const res = http.get(`${BASE_URL}/employees/rankings?department_id=${deptId}`);
     check(res, {
-      'jobs list status 200': (r) => r.status === 200,
+      'employee rankings status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 7. Update Employee (3% of requests) - UPDATE operation
-  else if (scenario < 0.93) {
-    const employeeId = Math.floor(Math.random() * 107) + 100;
-    const newSalary = Math.floor(Math.random() * 30000) + 50000; // 50k-80k
-    
-    const payload = JSON.stringify({
-      salary: newSalary,
-      job_id: 'IT_PROG',
-      department_id: 60,
-      manager_id: 103
-    });
-    
-    const params = {
-      headers: { 'Content-Type': 'application/json' },
-    };
-    
-    const res = http.put(`${BASE_URL}/employees/${employeeId}`, payload, params);
+  // 7. Top Earners Analysis (7% of requests) - Complex query with DISTINCT, ORDER BY, and LIMIT
+  else if (scenario < 0.77) {
+    const limit = Math.floor(Math.random() * 20) + 10; // 10-30 top earners
+    const res = http.get(`${BASE_URL}/reports/top-earners?limit=${limit}`);
     check(res, {
-      'employee update status in [200,404]': (r) => r.status === 200 || r.status === 404,
+      'top earners status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 8. Get Employee Job History (5% of requests) - SELECT with date filter
-  else if (scenario < 0.98) {
+  // 8. Department Performance Metrics (6% of requests) - Complex analytical query with multiple aggregations
+  else if (scenario < 0.83) {
+    const res = http.get(`${BASE_URL}/reports/department-performance`);
+    check(res, {
+      'dept performance status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 9. Employee Search with Subquery (5% of requests) - SELECT with IN clause and nested subquery
+  else if (scenario < 0.88) {
+    const minSalary = Math.floor(Math.random() * 50000) + 40000;
+    const res = http.get(`${BASE_URL}/employees/search/high-earners?min_salary=${minSalary}`);
+    check(res, {
+      'high earners search status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 10. Location-based Employee Analysis (4% of requests) - SELECT with multiple JOINs and CASE statements
+  else if (scenario < 0.92) {
+    const countries = ['US', 'UK', 'CA', 'DE', 'JP', 'CN', 'AU', 'FR', 'IT', 'BR'];
+    const countryId = getRandomElement(countries);
+    const res = http.get(`${BASE_URL}/reports/employees-by-location?country=${countryId}`);
+    check(res, {
+      'location analysis status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 11. Job History Analytics (3% of requests) - Complex time-series query with date filters
+  else if (scenario < 0.95) {
     const employeeId = Math.floor(Math.random() * 107) + 100;
     const res = http.get(`${BASE_URL}/employees/${employeeId}/history`);
     check(res, {
@@ -226,53 +237,44 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 9. Create Employee (1% of requests) - INSERT operation
-  else if (scenario < 0.99) {
-    const firstName = getRandomElement(firstNames);
-    const lastName = getRandomElement(lastNames);
-    
-    const payload = JSON.stringify({
-      first_name: firstName,
-      last_name: lastName,
-      email: generateEmail(firstName, lastName),
-      phone_number: '650.555.' + Math.floor(Math.random() * 9000 + 1000),
-      hire_date: new Date().toISOString().split('T')[0],
-      job_id: 'IT_PROG',
-      salary: Math.floor(Math.random() * 40000) + 60000,
-      department_id: 60,
-      manager_id: 103
-    });
-    
-    const params = {
-      headers: { 'Content-Type': 'application/json' },
-    };
-    
-    const res = http.post(`${BASE_URL}/employees`, payload, params);
+  // 12. Salary Distribution Report (2% of requests) - SELECT with HAVING, GROUP BY, and aggregate functions
+  else if (scenario < 0.97) {
+    const res = http.get(`${BASE_URL}/reports/salary-distribution`);
     check(res, {
-      'employee create status 201': (r) => r.status === 201,
-      'employee ID returned': (r) => JSON.parse(r.body).employee_id > 0,
+      'salary distribution status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 10. Promote Employee (1% of requests) - Transaction: UPDATE + INSERT
-  else {
-    const employeeId = Math.floor(Math.random() * 107) + 100;
-    
-    const payload = JSON.stringify({
-      new_job_id: 'IT_PROG',
-      new_salary: Math.floor(Math.random() * 50000) + 80000,
-      new_department_id: 90
-    });
-    
-    const params = {
-      headers: { 'Content-Type': 'application/json' },
-    };
-    
-    const res = http.post(`${BASE_URL}/employees/${employeeId}/promote`, payload, params);
+  // 13. Cross-Departmental Analysis (2% of requests) - SELECT with UNION and complex joins
+  else if (scenario < 0.99) {
+    const res = http.get(`${BASE_URL}/reports/cross-department-analysis`);
     check(res, {
-      'promotion status in [200,404,500]': (r) => [200, 404, 500].includes(r.status),
+      'cross-dept analysis status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
+  
+  // 14. Department Hierarchy with Analytics (1% of requests) - Recursive CTE with aggregations
+  else {
+    const res = http.get(`${BASE_URL}/departments/hierarchy`);
+    check(res, {
+      'department hierarchy status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // COMMENTED OUT - Transaction operation (not testing write operations)
+  // else {
+  //   const employeeId = Math.floor(Math.random() * 107) + 100;
+  //   const payload = JSON.stringify({
+  //     new_job_id: 'IT_PROG',
+  //     new_salary: Math.floor(Math.random() * 50000) + 80000,
+  //     new_department_id: 90
+  //   });
+  //   const params = { headers: { 'Content-Type': 'application/json' } };
+  //   const res = http.post(`${BASE_URL}/employees/${employeeId}/promote`, payload, params);
+  //   check(res, {
+  //     'promotion status in [200,404,500]': (r) => [200, 404, 500].includes(r.status),
+  //   }) || errorRate.add(1);
+  // }
   
   // Random sleep based on intensity profile
   const thinkTime = profile.thinkTime;
@@ -389,18 +391,30 @@ export function handleSummary(data) {
   console.log('');
   console.log('═'.repeat(80));
   console.log('');
-  console.log(`📋 DATABASE OPERATIONS TESTED:`);
+  console.log(`📋 COMPLEX SELECT OPERATIONS TESTED:`);
   console.log('');
-  console.log(`   ✓ SELECT with JOIN (employee list)`);
-  console.log(`   ✓ SELECT with multiple JOINs (employee details)`);
-  console.log(`   ✓ SELECT with aggregation (department stats)`);
-  console.log(`   ✓ SELECT with filter (department employees)`);
-  console.log(`   ✓ Complex SELECT with GROUP BY (salary report)`);
-  console.log(`   ✓ Simple SELECT (jobs list)`);
-  console.log(`   ✓ INSERT (create employee)`);
-  console.log(`   ✓ UPDATE (update employee)`);
-  console.log(`   ✓ Transaction (promote employee)`);
-  console.log(`   ✓ SELECT with date filter (job history)`);
+  console.log(`   Basic Queries (45%):`);
+  console.log(`     ✓ SELECT with JOIN (employee list) - 18%`);
+  console.log(`     ✓ SELECT with multiple JOINs (employee details) - 15%`);
+  console.log(`     ✓ SELECT with aggregation (department stats) - 12%`);
+  console.log('');
+  console.log(`   Intermediate Queries (28%):`);
+  console.log(`     ✓ SELECT with filter (department employees) - 10%`);
+  console.log(`     ✓ Complex aggregation with GROUP BY (salary report) - 8%`);
+  console.log(`     ✓ Window functions with ROW_NUMBER/RANK (rankings) - 7%`);
+  console.log(`     ✓ DISTINCT with ORDER BY and LIMIT (top earners) - 7%`);
+  console.log('');
+  console.log(`   Advanced Queries (27%):`);
+  console.log(`     ✓ Multiple aggregations & analytics (dept performance) - 6%`);
+  console.log(`     ✓ Nested subquery with IN clause (high earners search) - 5%`);
+  console.log(`     ✓ Multi-JOIN with CASE statements (location analysis) - 4%`);
+  console.log(`     ✓ Time-series with date filters (job history) - 3%`);
+  console.log(`     ✓ HAVING with GROUP BY aggregates (salary distribution) - 2%`);
+  console.log(`     ✓ UNION with complex joins (cross-dept analysis) - 2%`);
+  console.log(`     ✓ Recursive CTE with aggregations (dept hierarchy) - 1%`);
+  console.log('');
+  console.log(`   ℹ️  Note: INSERT, UPDATE, DELETE operations are commented out`);
+  console.log(`   📊 Total: 14 different complex SELECT query patterns`);
   console.log('');
   console.log('╚════════════════════════════════════════════════════════════════════════════╝');
   console.log('');
