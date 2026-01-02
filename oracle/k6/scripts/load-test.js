@@ -34,8 +34,15 @@ const TEST_INTENSITY = __ENV.TEST_INTENSITY || 'medium';
 // Intensity configuration profiles
 const intensityProfiles = {
   low: {
-    vus: 50,
-    duration: '10m',
+    stages: [
+      { duration: '2m', target: 10 },   // Warm up to 10 VUs
+      { duration: '5m', target: 25 },   // Ramp up to 25 VUs
+      { duration: '10m', target: 50 },  // Increase to 50 VUs
+      { duration: '10m', target: 75 },  // Peak load at 75 VUs
+      { duration: '5m', target: 100 },  // Maximum stress at 100 VUs
+      { duration: '5m', target: 75 },   // Step down
+      { duration: '3m', target: 0 },    // Cool down
+    ],
     thinkTime: { min: 1, max: 2 },
     thresholds: {
       'http_req_duration': ['p(95)<2000', 'p(99)<3000'],
@@ -44,8 +51,15 @@ const intensityProfiles = {
     },
   },
   medium: {
-    vus: 200,
-    duration: '10m',
+    stages: [
+      { duration: '2m', target: 20 },   // Warm up to 20 VUs
+      { duration: '5m', target: 50 },   // Ramp up to 50 VUs
+      { duration: '10m', target: 100 }, // Increase to 100 VUs
+      { duration: '10m', target: 150 }, // Peak load at 150 VUs
+      { duration: '5m', target: 200 },  // Maximum stress at 200 VUs
+      { duration: '5m', target: 150 },  // Step down
+      { duration: '3m', target: 0 },    // Cool down
+    ],
     thinkTime: { min: 0.5, max: 1 },
     thresholds: {
       'http_req_duration': ['p(95)<2500', 'p(99)<3500'],
@@ -54,8 +68,15 @@ const intensityProfiles = {
     },
   },
   high: {
-    vus: 500,
-    duration: '10m',
+    stages: [
+      { duration: '2m', target: 50 },   // Warm up to 50 VUs
+      { duration: '5m', target: 150 },  // Ramp up to 150 VUs
+      { duration: '10m', target: 300 }, // Increase to 300 VUs
+      { duration: '10m', target: 400 }, // Peak load at 400 VUs
+      { duration: '5m', target: 500 },  // Maximum stress at 500 VUs
+      { duration: '5m', target: 400 },  // Step down
+      { duration: '3m', target: 0 },    // Cool down
+    ],
     thinkTime: { min: 0.2, max: 0.5 },
     thresholds: {
       'http_req_duration': ['p(95)<3000', 'p(99)<4000'],
@@ -64,8 +85,15 @@ const intensityProfiles = {
     },
   },
   stress: {
-    vus: 1000,
-    duration: '10m',
+    stages: [
+      { duration: '2m', target: 100 },  // Warm up to 100 VUs
+      { duration: '5m', target: 300 },  // Ramp up to 300 VUs
+      { duration: '10m', target: 600 }, // Increase to 600 VUs
+      { duration: '10m', target: 800 }, // Peak load at 800 VUs
+      { duration: '5m', target: 1000 }, // Maximum stress at 1000 VUs
+      { duration: '5m', target: 800 },  // Step down
+      { duration: '3m', target: 0 },    // Cool down
+    ],
     thinkTime: { min: 0.1, max: 0.3 },
     thresholds: {
       'http_req_duration': ['p(95)<4000', 'p(99)<5000'],
@@ -74,8 +102,15 @@ const intensityProfiles = {
     },
   },
   max: {
-    vus: 2000,
-    duration: '10m',
+    stages: [
+      { duration: '2m', target: 200 },  // Warm up to 200 VUs
+      { duration: '5m', target: 600 },  // Ramp up to 600 VUs
+      { duration: '10m', target: 1200 }, // Increase to 1200 VUs
+      { duration: '10m', target: 1600 }, // Peak load at 1600 VUs
+      { duration: '5m', target: 2000 },  // Maximum stress at 2000 VUs
+      { duration: '5m', target: 1600 },  // Step down
+      { duration: '3m', target: 0 },     // Cool down
+    ],
     thinkTime: { min: 0.05, max: 0.2 },
     thresholds: {
       'http_req_duration': ['p(95)<6000', 'p(99)<8000'],
@@ -92,12 +127,15 @@ const profile = intensityProfiles[TEST_INTENSITY] || intensityProfiles.medium;
 export const options = {
   scenarios: {
     hr_portal_test: {
-      executor: 'constant-vus',
-      vus: profile.vus,
-      duration: profile.duration,
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: profile.stages,
+      gracefulRampDown: '30s',
     },
   },
   thresholds: profile.thresholds,
+  // Increase timeout for slow responses
+  timeout: '120s',
 };
 
 // Sample data for creating employees
@@ -121,7 +159,11 @@ export default function() {
     employeeListDuration.add(res.timings.duration);
     check(res, {
       'employee list status 200': (r) => r.status === 200,
-      'employee list has data': (r) => JSON.parse(r.body).employees.length > 0,
+      'employee list has data': (r) => {
+        if (!r.body) return false;
+        const data = JSON.parse(r.body);
+        return data.employees && data.employees.length > 0;
+      },
     }) || errorRate.add(1);
   }
   
@@ -142,6 +184,7 @@ export default function() {
     check(res, {
       'department list status 200': (r) => r.status === 200,
       'departments have stats': (r) => {
+        if (!r.body) return false;
         const data = JSON.parse(r.body);
         return data.departments && data.departments.length > 0;
       },
@@ -163,7 +206,11 @@ export default function() {
     salaryReportDuration.add(res.timings.duration);
     check(res, {
       'salary report status 200': (r) => r.status === 200,
-      'report has data': (r) => JSON.parse(r.body).report.length > 0,
+      'report has data': (r) => {
+        if (!r.body) return false;
+        const data = JSON.parse(r.body);
+        return data.report && data.report.length > 0;
+      },
     }) || errorRate.add(1);
   }
   
@@ -199,13 +246,18 @@ export default function() {
 export function handleSummary(data) {
   const metrics = data.metrics;
   
+  // Debug: Log available percentile keys
+  console.log('\nDEBUG - Available http_req_duration values keys:', Object.keys(metrics.http_req_duration.values));
+  
   // Calculate key statistics
   const totalRequests = metrics.http_reqs.values.count;
   const failedRequests = metrics.http_req_failed.values.passes;
   const successRate = ((totalRequests - failedRequests) / totalRequests * 100).toFixed(2);
   const avgDuration = (metrics.http_req_duration.values.avg / 1000).toFixed(2);
   const p95Duration = (metrics.http_req_duration.values['p(95)'] / 1000).toFixed(2);
-  const p99Duration = (metrics.http_req_duration.values['p(99)'] / 1000).toFixed(2);
+  // p(99) might be stored without parentheses or need explicit calculation
+  const p99Value = metrics.http_req_duration.values['p(99)'] || metrics.http_req_duration.values.p99 || null;
+  const p99Duration = p99Value ? (p99Value / 1000).toFixed(2) : 'N/A';
   const reqPerSec = metrics.http_reqs.values.rate.toFixed(2);
   const testDuration = (data.state.testRunDurationMs / 1000 / 60).toFixed(1);
   const maxVUs = metrics.vus_max.values.max;
