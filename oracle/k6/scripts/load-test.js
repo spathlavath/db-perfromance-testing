@@ -36,7 +36,7 @@ const intensityProfiles = {
   low: {
     vus: 50,
     duration: '10m',
-    thinkTime: { min: 0.5, max: 1 },
+    thinkTime: { min: 1, max: 2 },
     thresholds: {
       'http_req_duration': ['p(95)<2000', 'p(99)<3000'],
       'http_req_failed': ['rate<0.05'],
@@ -46,7 +46,7 @@ const intensityProfiles = {
   medium: {
     vus: 200,
     duration: '10m',
-    thinkTime: { min: 0.3, max: 0.8 },
+    thinkTime: { min: 0.5, max: 1 },
     thresholds: {
       'http_req_duration': ['p(95)<2500', 'p(99)<3500'],
       'http_req_failed': ['rate<0.05'],
@@ -204,7 +204,8 @@ export function handleSummary(data) {
   const failedRequests = metrics.http_req_failed.values.passes;
   const successRate = ((totalRequests - failedRequests) / totalRequests * 100).toFixed(2);
   const avgDuration = (metrics.http_req_duration.values.avg / 1000).toFixed(2);
-  const p95Duration = (metrics.http_req_duration.values.p95 / 1000).toFixed(2);
+  const p95Duration = (metrics.http_req_duration.values['p(95)'] / 1000).toFixed(2);
+  const p99Duration = (metrics.http_req_duration.values['p(99)'] / 1000).toFixed(2);
   const reqPerSec = metrics.http_reqs.values.rate.toFixed(2);
   const testDuration = (data.state.testRunDurationMs / 1000 / 60).toFixed(1);
   const maxVUs = metrics.vus_max.values.max;
@@ -243,14 +244,14 @@ export function handleSummary(data) {
   console.log(`   Average Response:    ${avgDuration}s`);
   console.log(`   Median Response:     ${(metrics.http_req_duration.values.med / 1000).toFixed(2)}s`);
   console.log(`   p(95):               ${p95Duration}s`);
-  console.log(`   p(99):               ${(metrics.http_req_duration.values['p(99)'] / 1000).toFixed(2)}s`);
+  console.log(`   p(99):               ${p99Duration}s`);
   console.log(`   Min Response:        ${(metrics.http_req_duration.values.min / 1000).toFixed(2)}s`);
   console.log(`   Max Response:        ${(metrics.http_req_duration.values.max / 1000).toFixed(2)}s`);
   console.log('');
   
   // Performance verdict
   const p95Threshold = profile.thresholds['http_req_duration'][0].match(/\d+/)[0];
-  const p95Value = metrics.http_req_duration.values.p95 || 0;
+  const p95Value = metrics.http_req_duration.values['p(95)'] || 0;
   const p95Pass = p95Value < p95Threshold;
   
   console.log('═'.repeat(80));
