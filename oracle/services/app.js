@@ -367,6 +367,9 @@ app.get('/departments', async (req, res) => {
 app.get('/departments/:id/employees', async (req, res) => {
   let connection;
   try {
+    const limit = parseInt(req.query.limit) || 100; // Default 100 rows for performance
+    const offset = parseInt(req.query.offset) || 0;
+    
     connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT e.employee_id, e.first_name, e.last_name, e.email, 
@@ -374,11 +377,12 @@ app.get('/departments/:id/employees', async (req, res) => {
        FROM employees e
        LEFT JOIN jobs j ON e.job_id = j.job_id
        WHERE e.department_id = :dept_id
-       ORDER BY e.salary DESC`,
-      [req.params.id],
+       ORDER BY e.salary DESC
+       OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`,
+      [req.params.id, offset, limit],
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
     );
-    res.json({ department_id: req.params.id, count: result.rows.length, employees: result.rows });
+    res.json({ department_id: req.params.id, count: result.rows.length, limit: limit, offset: offset, employees: result.rows });
   } catch (err) {
     logger.error('Error fetching department employees:', err);
     res.status(500).json({ error: err.message });
