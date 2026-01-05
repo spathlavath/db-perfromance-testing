@@ -152,10 +152,10 @@ function generateEmail(firstName, lastName) {
 export default function() {
   const scenario = Math.random();
   
-  // ONLY SLOW/COMPLEX QUERIES - Will show prominently in New Relic slow query analysis
+  // DISTRIBUTED ACROSS 12 SLOW/COMPLEX QUERIES - Will show prominently in New Relic slow query analysis
   
-  // 1. Department Stats with Aggregation (20% of requests) - COUNT, AVG, GROUP BY
-  if (scenario < 0.20) {
+  // 1. Department Stats with Aggregation (13% of requests) - COUNT, AVG, GROUP BY
+  if (scenario < 0.13) {
     const res = http.get(`${BASE_URL}/departments`);
     departmentListDuration.add(res.timings.duration);
     check(res, {
@@ -172,8 +172,8 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 2. Salary Report (20% of requests) - Complex GROUP BY with SUM/AVG/MIN/MAX
-  else if (scenario < 0.40) {
+  // 2. Salary Report (13% of requests) - Complex GROUP BY with SUM/AVG/MIN/MAX
+  else if (scenario < 0.26) {
     const res = http.get(`${BASE_URL}/reports/salary-by-department`);
     salaryReportDuration.add(res.timings.duration);
     check(res, {
@@ -190,16 +190,16 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 3. Employee Analysis Report (20% of requests) - Complex multi-join with subqueries
-  else if (scenario < 0.60) {
+  // 3. Employee Analysis Report (12% of requests) - Complex multi-join with subqueries
+  else if (scenario < 0.38) {
     const res = http.get(`${BASE_URL}/reports/employee-analysis`);
     check(res, {
       'employee analysis status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 4. Department Hierarchy Report (15% of requests) - Full aggregation across geography
-  else if (scenario < 0.75) {
+  // 4. Department Hierarchy Report (11% of requests) - Full aggregation across geography
+  else if (scenario < 0.49) {
     const res = http.get(`${BASE_URL}/reports/department-hierarchy`);
     check(res, {
       'dept hierarchy status 200': (r) => r.status === 200,
@@ -207,7 +207,7 @@ export default function() {
   }
   
   // 5. Job Statistics Report (10% of requests) - Multiple aggregations with STDDEV
-  else if (scenario < 0.85) {
+  else if (scenario < 0.59) {
     const res = http.get(`${BASE_URL}/reports/job-statistics`);
     check(res, {
       'job stats status 200': (r) => r.status === 200,
@@ -215,18 +215,58 @@ export default function() {
   }
   
   // 6. Salary Range Analysis (10% of requests) - Nested aggregations & calculations
-  else if (scenario < 0.95) {
+  else if (scenario < 0.69) {
     const res = http.get(`${BASE_URL}/reports/salary-ranges`);
     check(res, {
       'salary ranges status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 7. Tenure Analysis (5% of requests) - Date calculations with CASE statements
-  else {
+  // 7. Organizational Hierarchy (9% of requests) - Recursive CONNECT BY with aggregations
+  else if (scenario < 0.78) {
+    const res = http.get(`${BASE_URL}/reports/org-hierarchy`);
+    check(res, {
+      'org hierarchy status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 8. Salary Rankings (8% of requests) - Window functions with RANK/DENSE_RANK/NTILE
+  else if (scenario < 0.86) {
+    const res = http.get(`${BASE_URL}/reports/salary-rankings`);
+    check(res, {
+      'salary rankings status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 9. Tenure Analysis (6% of requests) - Date calculations with CASE statements
+  else if (scenario < 0.92) {
     const res = http.get(`${BASE_URL}/reports/tenure-analysis`);
     check(res, {
       'tenure analysis status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 10. Employee Comparisons (4% of requests) - Self-join analysis
+  else if (scenario < 0.96) {
+    const res = http.get(`${BASE_URL}/reports/employee-comparisons`);
+    check(res, {
+      'employee comparisons status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 11. Career Progression (2% of requests) - Job history with multiple aggregations
+  else if (scenario < 0.98) {
+    const res = http.get(`${BASE_URL}/reports/career-progression`);
+    check(res, {
+      'career progression status 200': (r) => r.status === 200,
+    }) || errorRate.add(1);
+  }
+  
+  // 12. Cross-Department Analysis (2% of requests) - Complex cross-tabulation with MEDIAN
+  else {
+    const res = http.get(`${BASE_URL}/reports/cross-department-analysis`);
+    check(res, {
+      'cross dept analysis status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   

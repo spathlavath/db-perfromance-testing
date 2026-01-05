@@ -709,6 +709,229 @@ app.get('/reports/salary-ranges', async (req, res) => {
   }
 });
 
+// NEW COMPLEX QUERIES BELOW:
+
+// Manager-employee relationship analysis with aggregations
+app.get('/reports/org-hierarchy', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT 
+         e.employee_id,
+         e.first_name || ' ' || e.last_name as employee_name,
+         e.salary,
+         e.hire_date,
+         m.employee_id as manager_id,
+         m.first_name || ' ' || m.last_name as manager_name,
+         m.salary as manager_salary,
+         d.department_name,
+         j.job_title,
+         (SELECT COUNT(*) FROM employees e2 WHERE e2.manager_id = e.employee_id) as direct_reports,
+         (SELECT AVG(salary) FROM employees e3 WHERE e3.manager_id = e.employee_id) as avg_direct_report_salary,
+         (SELECT MAX(salary) FROM employees e4 WHERE e4.manager_id = e.employee_id) as max_direct_report_salary,
+         (SELECT MIN(salary) FROM employees e5 WHERE e5.manager_id = e.employee_id) as min_direct_report_salary,
+         e.salary - m.salary as salary_diff_from_manager,
+         ROUND(MONTHS_BETWEEN(SYSDATE, e.hire_date)/12, 1) as years_employed,
+         CASE 
+           WHEN (SELECT COUNT(*) FROM employees e6 WHERE e6.manager_id = e.employee_id) = 0 THEN 'Individual Contributor'
+           WHEN (SELECT COUNT(*) FROM employees e7 WHERE e7.manager_id = e.employee_id) < 3 THEN 'Team Lead'
+           WHEN (SELECT COUNT(*) FROM employees e8 WHERE e8.manager_id = e.employee_id) < 10 THEN 'Manager'
+           ELSE 'Senior Manager'
+         END as management_level
+       FROM employees e
+       LEFT JOIN employees m ON e.manager_id = m.employee_id
+       LEFT JOIN departments d ON e.department_id = d.department_id
+       LEFT JOIN jobs j ON e.job_id = j.job_id
+       WHERE e.salary > 3000
+       ORDER BY (SELECT COUNT(*) FROM employees e9 WHERE e9.manager_id = e.employee_id) DESC, e.salary DESC
+       FETCH FIRST 100 ROWS ONLY`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, hierarchy: result.rows });
+  } catch (err) {
+    logger.error('Error in org hierarchy:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Window functions with ranking and percentiles
+app.get('/reports/salary-rankings', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT 
+         e.employee_id,
+         e.first_name || ' ' || e.last_name as name,
+         e.salary,
+         d.department_name,
+         j.job_title,
+         RANK() OVER (PARTITION BY e.department_id ORDER BY e.salary DESC) as dept_rank,
+         DENSE_RANK() OVER (ORDER BY e.salary DESC) as company_rank,
+         ROW_NUMBER() OVER (PARTITION BY e.job_id ORDER BY e.salary DESC) as job_rank,
+         PERCENT_RANK() OVER (PARTITION BY e.department_id ORDER BY e.salary) as dept_percentile,
+         NTILE(4) OVER (ORDER BY e.salary) as salary_quartile,
+         AVG(e.salary) OVER (PARTITION BY e.department_id) as dept_avg,
+         MAX(e.salary) OVER (PARTITION BY e.department_id) as dept_max,
+         e.salary - AVG(e.salary) OVER (PARTITION BY e.department_id) as diff_from_dept_avg,
+         FIRST_VALUE(e.salary) OVER (PARTITION BY e.department_id ORDER BY e.salary DESC) as top_dept_salary,
+         LAG(e.salary, 1) OVER (PARTITION BY e.department_id ORDER BY e.salary DESC) as next_higher_salary
+       FROM employees e
+       JOIN departments d ON e.department_id = d.department_id
+       JOIN jobs j ON e.job_id = j.job_id
+       WHERE e.salary > 3000
+       ORDER BY e.salary DESC
+       OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, rankings: result.rows });
+  } catch (err) {
+    logger.error('Error in salary rankings:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Self-join analysis - employee comparisons
+app.get('/reports/employee-comparisons', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT 
+         e1.employee_id as emp1_id,
+         e1.first_name || ' ' || e1.last_name as emp1_name,
+         e1.salary as emp1_salary,
+         e1.hire_date as emp1_hire_date,
+         e2.employee_id as emp2_id,
+         e2.first_name || ' ' || e2.last_name as emp2_name,
+         e2.salary as emp2_salary,
+         e2.hire_date as emp2_hire_date,
+         d.department_name,
+         ABS(e1.salary - e2.salary) as salary_difference,
+         ABS(MONTHS_BETWEEN(e1.hire_date, e2.hire_date)) as tenure_diff_months,
+         CASE 
+           WHEN e1.salary > e2.salary THEN e1.first_name || ' earns more'
+           WHEN e1.salary < e2.salary THEN e2.first_name || ' earns more'
+           ELSE 'Equal salary'
+         END as salary_comparison
+       FROM employees e1
+       JOIN employees e2 ON e1.department_id = e2.department_id 
+                        AND e1.employee_id < e2.employee_id
+                        AND e1.job_id = e2.job_id
+       JOIN departments d ON e1.department_id = d.department_id
+       WHERE ABS(e1.salary - e2.salary) > 1000
+       ORDER BY salary_difference DESC
+       OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, comparisons: result.rows });
+  } catch (err) {
+    logger.error('Error in employee comparisons:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Complex job history analysis with multiple aggregations
+app.get('/reports/career-progression', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT 
+         e.employee_id,
+         e.first_name || ' ' || e.last_name as employee_name,
+         e.hire_date,
+         ROUND(MONTHS_BETWEEN(SYSDATE, e.hire_date)/12, 1) as years_employed,
+         COUNT(jh.job_id) as total_job_changes,
+         COUNT(DISTINCT jh.job_id) as unique_jobs_held,
+         COUNT(DISTINCT jh.department_id) as departments_worked,
+         MIN(jh.start_date) as first_job_start,
+         MAX(jh.end_date) as last_job_end,
+         e.salary as current_salary,
+         (SELECT j.job_title FROM jobs j WHERE j.job_id = e.job_id) as current_job,
+         (SELECT d.department_name FROM departments d WHERE d.department_id = e.department_id) as current_dept,
+         ROUND(e.salary / NULLIF(COUNT(jh.job_id), 0), 2) as salary_per_job_change,
+         CASE 
+           WHEN COUNT(jh.job_id) = 0 THEN 'Never changed jobs'
+           WHEN COUNT(jh.job_id) < 2 THEN 'Limited mobility'
+           WHEN COUNT(jh.job_id) < 4 THEN 'Moderate mobility'
+           ELSE 'High mobility'
+         END as mobility_category
+       FROM employees e
+       LEFT JOIN job_history jh ON e.employee_id = jh.employee_id
+       WHERE e.hire_date < ADD_MONTHS(SYSDATE, -24)
+       GROUP BY e.employee_id, e.first_name, e.last_name, e.hire_date, e.salary, e.job_id, e.department_id
+       HAVING COUNT(jh.job_id) > 0
+       ORDER BY total_job_changes DESC, years_employed DESC
+       OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, progressions: result.rows });
+  } catch (err) {
+    logger.error('Error in career progression:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Cross-department salary analysis with complex conditions
+app.get('/reports/cross-department-analysis', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT 
+         d.department_name,
+         r.region_name,
+         COUNT(e.employee_id) as employee_count,
+         AVG(e.salary) as avg_salary,
+         MEDIAN(e.salary) as median_salary,
+         STDDEV(e.salary) as salary_stddev,
+         MIN(e.salary) as min_salary,
+         MAX(e.salary) as max_salary,
+         MAX(e.salary) - MIN(e.salary) as salary_spread,
+         SUM(CASE WHEN e.salary > 10000 THEN 1 ELSE 0 END) as high_earners,
+         SUM(CASE WHEN e.salary < 5000 THEN 1 ELSE 0 END) as low_earners,
+         ROUND(AVG(MONTHS_BETWEEN(SYSDATE, e.hire_date)/12), 1) as avg_tenure_years,
+         COUNT(DISTINCT e.job_id) as unique_jobs,
+         (SELECT COUNT(*) FROM job_history jh JOIN employees e2 ON jh.employee_id = e2.employee_id 
+          WHERE e2.department_id = d.department_id) as total_job_changes,
+         ROUND(100.0 * COUNT(CASE WHEN e.salary > 
+           (SELECT AVG(salary) FROM employees WHERE department_id = e.department_id) 
+           THEN 1 END) / NULLIF(COUNT(e.employee_id), 0), 2) as pct_above_dept_avg
+       FROM departments d
+       LEFT JOIN employees e ON d.department_id = e.department_id
+       LEFT JOIN locations l ON d.location_id = l.location_id
+       LEFT JOIN countries c ON l.country_id = c.country_id
+       LEFT JOIN regions r ON c.region_id = r.region_id
+       WHERE e.employee_id IS NOT NULL
+       GROUP BY d.department_id, d.department_name, r.region_name
+       HAVING COUNT(e.employee_id) >= 3
+       ORDER BY avg_salary DESC`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, analysis: result.rows });
+  } catch (err) {
+    logger.error('Error in cross-department analysis:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
 // Parse-intensive workload - stimulates parse metrics
 app.post('/workload/parse', async (req, res) => {
   const { iterations = 50, use_binds = false } = req.body;
