@@ -601,28 +601,22 @@ app.get('/reports/department-hierarchy', async (req, res) => {
   }
 });
 
-// Job statistics across regions - multiple aggregations
+// Job statistics - simplified for performance under load
 app.get('/reports/job-statistics', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT j.job_title,
-              r.region_name,
               COUNT(e.employee_id) as employee_count,
               AVG(e.salary) as avg_salary,
-              STDDEV(e.salary) as salary_stddev,
               MIN(e.salary) as min_salary,
               MAX(e.salary) as max_salary,
               j.min_salary as job_min_salary,
               j.max_salary as job_max_salary
        FROM jobs j
        LEFT JOIN employees e ON j.job_id = e.job_id
-       LEFT JOIN departments d ON e.department_id = d.department_id
-       LEFT JOIN locations l ON d.location_id = l.location_id
-       LEFT JOIN countries c ON l.country_id = c.country_id
-       LEFT JOIN regions r ON c.region_id = r.region_id
-       GROUP BY j.job_title, r.region_name, j.min_salary, j.max_salary
+       GROUP BY j.job_title, j.min_salary, j.max_salary
        HAVING COUNT(e.employee_id) > 0
        ORDER BY employee_count DESC`,
       [],
@@ -672,29 +666,24 @@ app.get('/reports/tenure-analysis', async (req, res) => {
   }
 });
 
-// Salary range analysis by job and location - nested aggregations
+// Salary range analysis - simplified for performance under load
 app.get('/reports/salary-ranges', async (req, res) => {
   let connection;
   try {
     connection = await pool.getConnection();
     const result = await connection.execute(
       `SELECT j.job_title,
-              l.city,
-              c.country_name,
               COUNT(e.employee_id) as emp_count,
               MIN(e.salary) as current_min,
               MAX(e.salary) as current_max,
               AVG(e.salary) as current_avg,
               j.min_salary as job_min,
               j.max_salary as job_max,
-              ROUND((AVG(e.salary) - j.min_salary) / (j.max_salary - j.min_salary) * 100, 2) as salary_range_pct
+              ROUND((AVG(e.salary) - j.min_salary) / NULLIF(j.max_salary - j.min_salary, 0) * 100, 2) as salary_range_pct
        FROM jobs j
        LEFT JOIN employees e ON j.job_id = e.job_id
-       LEFT JOIN departments d ON e.department_id = d.department_id
-       LEFT JOIN locations l ON d.location_id = l.location_id
-       LEFT JOIN countries c ON l.country_id = c.country_id
        WHERE e.employee_id IS NOT NULL
-       GROUP BY j.job_title, l.city, c.country_name, j.min_salary, j.max_salary
+       GROUP BY j.job_title, j.min_salary, j.max_salary
        HAVING COUNT(e.employee_id) >= 2
        ORDER BY emp_count DESC`,
       [],
@@ -711,7 +700,7 @@ app.get('/reports/salary-ranges', async (req, res) => {
 
 // NEW COMPLEX QUERIES BELOW:
 
-// Manager-employee relationship analysis with aggregations
+// Manager-employee relationship analysis - simplified for performance
 app.get('/reports/org-hierarchy', async (req, res) => {
   let connection;
   try {
@@ -727,24 +716,14 @@ app.get('/reports/org-hierarchy', async (req, res) => {
          m.salary as manager_salary,
          d.department_name,
          j.job_title,
-         (SELECT COUNT(*) FROM employees e2 WHERE e2.manager_id = e.employee_id) as direct_reports,
-         (SELECT AVG(salary) FROM employees e3 WHERE e3.manager_id = e.employee_id) as avg_direct_report_salary,
-         (SELECT MAX(salary) FROM employees e4 WHERE e4.manager_id = e.employee_id) as max_direct_report_salary,
-         (SELECT MIN(salary) FROM employees e5 WHERE e5.manager_id = e.employee_id) as min_direct_report_salary,
-         e.salary - m.salary as salary_diff_from_manager,
-         ROUND(MONTHS_BETWEEN(SYSDATE, e.hire_date)/12, 1) as years_employed,
-         CASE 
-           WHEN (SELECT COUNT(*) FROM employees e6 WHERE e6.manager_id = e.employee_id) = 0 THEN 'Individual Contributor'
-           WHEN (SELECT COUNT(*) FROM employees e7 WHERE e7.manager_id = e.employee_id) < 3 THEN 'Team Lead'
-           WHEN (SELECT COUNT(*) FROM employees e8 WHERE e8.manager_id = e.employee_id) < 10 THEN 'Manager'
-           ELSE 'Senior Manager'
-         END as management_level
+         e.salary - NVL(m.salary, 0) as salary_diff_from_manager,
+         ROUND(MONTHS_BETWEEN(SYSDATE, e.hire_date)/12, 1) as years_employed
        FROM employees e
        LEFT JOIN employees m ON e.manager_id = m.employee_id
        LEFT JOIN departments d ON e.department_id = d.department_id
        LEFT JOIN jobs j ON e.job_id = j.job_id
        WHERE e.salary > 3000
-       ORDER BY (SELECT COUNT(*) FROM employees e9 WHERE e9.manager_id = e.employee_id) DESC, e.salary DESC
+       ORDER BY e.salary DESC
        FETCH FIRST 100 ROWS ONLY`,
       [],
       { outFormat: oracledb.OUT_FORMAT_OBJECT }
@@ -841,7 +820,7 @@ app.get('/reports/employee-comparisons', async (req, res) => {
   }
 });
 
-// Complex job history analysis with multiple aggregations
+// Job history analysis - simplified for performance
 app.get('/reports/career-progression', async (req, res) => {
   let connection;
   try {
@@ -855,12 +834,9 @@ app.get('/reports/career-progression', async (req, res) => {
          COUNT(jh.job_id) as total_job_changes,
          COUNT(DISTINCT jh.job_id) as unique_jobs_held,
          COUNT(DISTINCT jh.department_id) as departments_worked,
-         MIN(jh.start_date) as first_job_start,
-         MAX(jh.end_date) as last_job_end,
          e.salary as current_salary,
-         (SELECT j.job_title FROM jobs j WHERE j.job_id = e.job_id) as current_job,
-         (SELECT d.department_name FROM departments d WHERE d.department_id = e.department_id) as current_dept,
-         ROUND(e.salary / NULLIF(COUNT(jh.job_id), 0), 2) as salary_per_job_change,
+         j.job_title as current_job,
+         d.department_name as current_dept,
          CASE 
            WHEN COUNT(jh.job_id) = 0 THEN 'Never changed jobs'
            WHEN COUNT(jh.job_id) < 2 THEN 'Limited mobility'
@@ -869,8 +845,10 @@ app.get('/reports/career-progression', async (req, res) => {
          END as mobility_category
        FROM employees e
        LEFT JOIN job_history jh ON e.employee_id = jh.employee_id
+       LEFT JOIN jobs j ON e.job_id = j.job_id
+       LEFT JOIN departments d ON e.department_id = d.department_id
        WHERE e.hire_date < ADD_MONTHS(SYSDATE, -24)
-       GROUP BY e.employee_id, e.first_name, e.last_name, e.hire_date, e.salary, e.job_id, e.department_id
+       GROUP BY e.employee_id, e.first_name, e.last_name, e.hire_date, e.salary, j.job_title, d.department_name
        HAVING COUNT(jh.job_id) > 0
        ORDER BY total_job_changes DESC, years_employed DESC
        OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY`,

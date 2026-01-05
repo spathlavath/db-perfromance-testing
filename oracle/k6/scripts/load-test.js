@@ -135,6 +135,7 @@ export const options = {
     },
   },
   thresholds: profile.thresholds,
+  timeout: '120s', // 2 minutes for slow queries under heavy load
 };
 
 // Sample data for creating employees
