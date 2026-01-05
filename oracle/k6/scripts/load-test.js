@@ -1,16 +1,17 @@
 /**
- * K6 Load Test for Oracle HR Portal - SELECT Queries Only
- * Tests realistic HR read operations across multiple endpoints with high concurrency
+ * K6 Load Test for Oracle HR Portal - SLOW/COMPLEX Queries Only
+ * Tests slow-running analytical queries to maximize visibility in New Relic APM
  * 
- * This generates diverse SELECT database span traces under stress:
- * - Simple SELECT queries
- * - SELECT with JOINs (single and multiple)
- * - SELECT with aggregation (GROUP BY, COUNT, AVG, SUM)
- * - SELECT with filtering (WHERE clauses)
- * - SELECT with date filters
- * - Complex queries with subqueries
+ * This generates SLOW database span traces under stress:
+ * - Complex aggregations (GROUP BY, COUNT, AVG, SUM, MIN, MAX, STDDEV)
+ * - Multi-table JOINs (4-6 tables)
+ * - Subqueries and correlated subqueries
+ * - Date calculations (MONTHS_BETWEEN, CASE statements)
+ * - Geographic aggregations (regions, countries, locations)
+ * - Nested aggregations and percentage calculations
  * 
- * NOTE: INSERT, UPDATE, DELETE operations are commented out for SELECT-only testing
+ * NOTE: Fast queries removed - only slow queries for APM visibility
+ * NOTE: Each virtual user (VU) executes ONE random query per iteration
  * 
  * Run with: k6 run load-test.js
  * Or via Docker Compose: docker-compose up k6
@@ -151,36 +152,10 @@ function generateEmail(firstName, lastName) {
 export default function() {
   const scenario = Math.random();
   
-  // 1. List Employees (15% of requests) - SELECT with JOIN
-  if (scenario < 0.15) {
-    const res = http.get(`${BASE_URL}/employees`);
-    employeeListDuration.add(res.timings.duration);
-    check(res, {
-      'employee list status 200': (r) => r.status === 200,
-      'employee list has data': (r) => {
-        if (!r.body || r.status !== 200) return false;
-        try {
-          const data = JSON.parse(r.body);
-          return data.employees && data.employees.length > 0;
-        } catch (e) {
-          return false;
-        }
-      },
-    }) || errorRate.add(1);
-  }
+  // ONLY SLOW/COMPLEX QUERIES - Will show prominently in New Relic slow query analysis
   
-  // 2. Get Employee Details (15% of requests) - SELECT with multiple JOINs
-  else if (scenario < 0.30) {
-    const employeeId = Math.floor(Math.random() * 107) + 100;
-    const res = http.get(`${BASE_URL}/employees/${employeeId}`);
-    employeeDetailDuration.add(res.timings.duration);
-    check(res, {
-      'employee detail status in [200,404]': (r) => r.status === 200 || r.status === 404,
-    }) || errorRate.add(1);
-  }
-  
-  // 3. List Departments with Stats (15% of requests) - SELECT with aggregation
-  else if (scenario < 0.45) {
+  // 1. Department Stats with Aggregation (20% of requests) - COUNT, AVG, GROUP BY
+  if (scenario < 0.20) {
     const res = http.get(`${BASE_URL}/departments`);
     departmentListDuration.add(res.timings.duration);
     check(res, {
@@ -197,17 +172,8 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 4. Get Department Employees (10% of requests) - SELECT with filter
-  else if (scenario < 0.55) {
-    const deptId = (Math.floor(Math.random() * 11) + 1) * 10;
-    const res = http.get(`${BASE_URL}/departments/${deptId}/employees`);
-    check(res, {
-      'dept employees status 200': (r) => r.status === 200,
-    }) || errorRate.add(1);
-  }
-  
-  // 5. Salary Report (10% of requests) - Complex aggregation with GROUP BY
-  else if (scenario < 0.65) {
+  // 2. Salary Report (20% of requests) - Complex GROUP BY with SUM/AVG/MIN/MAX
+  else if (scenario < 0.40) {
     const res = http.get(`${BASE_URL}/reports/salary-by-department`);
     salaryReportDuration.add(res.timings.duration);
     check(res, {
@@ -224,48 +190,39 @@ export default function() {
     }) || errorRate.add(1);
   }
   
-  // 6. Get Employee Job History (10% of requests) - SELECT with date filter
-  else if (scenario < 0.75) {
-    const employeeId = Math.floor(Math.random() * 107) + 100;
-    const res = http.get(`${BASE_URL}/employees/${employeeId}/history`);
-    check(res, {
-      'job history status 200': (r) => r.status === 200,
-    }) || errorRate.add(1);
-  }
-  
-  // 7. Employee Analysis Report (10% of requests) - Complex multi-join query
-  else if (scenario < 0.85) {
+  // 3. Employee Analysis Report (20% of requests) - Complex multi-join with subqueries
+  else if (scenario < 0.60) {
     const res = http.get(`${BASE_URL}/reports/employee-analysis`);
     check(res, {
       'employee analysis status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 8. Department Hierarchy Report (5% of requests) - Full aggregation
-  else if (scenario < 0.90) {
+  // 4. Department Hierarchy Report (15% of requests) - Full aggregation across geography
+  else if (scenario < 0.75) {
     const res = http.get(`${BASE_URL}/reports/department-hierarchy`);
     check(res, {
       'dept hierarchy status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 9. Job Statistics Report (5% of requests) - Multiple aggregations
-  else if (scenario < 0.95) {
+  // 5. Job Statistics Report (10% of requests) - Multiple aggregations with STDDEV
+  else if (scenario < 0.85) {
     const res = http.get(`${BASE_URL}/reports/job-statistics`);
     check(res, {
       'job stats status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 10. Salary Range Analysis (3% of requests) - Nested aggregations
-  else if (scenario < 0.98) {
+  // 6. Salary Range Analysis (10% of requests) - Nested aggregations & calculations
+  else if (scenario < 0.95) {
     const res = http.get(`${BASE_URL}/reports/salary-ranges`);
     check(res, {
       'salary ranges status 200': (r) => r.status === 200,
     }) || errorRate.add(1);
   }
   
-  // 11. Tenure Analysis (2% of requests) - Date calculations
+  // 7. Tenure Analysis (5% of requests) - Date calculations with CASE statements
   else {
     const res = http.get(`${BASE_URL}/reports/tenure-analysis`);
     check(res, {
@@ -417,22 +374,19 @@ export function handleSummary(data) {
   console.log('');
   console.log('═'.repeat(80));
   console.log('');
-  console.log(`📋 DATABASE SELECT OPERATIONS TESTED:`);
+  console.log(`📋 COMPLEX/SLOW QUERY OPERATIONS TESTED:`);
   console.log('');
-  console.log(`   ✓ SELECT with JOIN (employee list) - 15%`);
-  console.log(`   ✓ SELECT with multiple JOINs (employee details) - 15%`);
-  console.log(`   ✓ SELECT with aggregation & COUNT (department stats) - 15%`);
-  console.log(`   ✓ SELECT with WHERE filter (department employees) - 10%`);
-  console.log(`   ✓ Complex SELECT with GROUP BY & SUM/AVG (salary report) - 10%`);
-  console.log(`   ✓ SELECT with date filter & JOIN (job history) - 10%`);
-  console.log(`   ✓ Advanced multi-JOIN analysis (employee analysis) - 10%`);
-  console.log(`   ✓ Full aggregation with geography (department hierarchy) - 5%`);
-  console.log(`   ✓ Regional job statistics with STDDEV (job stats) - 5%`);
-  console.log(`   ✓ Nested aggregations & salary ranges - 3%`);
-  console.log(`   ✓ Date calculations & tenure analysis - 2%`);
+  console.log(`   ✓ Department aggregation (COUNT, AVG, GROUP BY) - 20%`);
+  console.log(`   ✓ Salary report (GROUP BY with SUM/AVG/MIN/MAX) - 20%`);
+  console.log(`   ✓ Employee analysis (multi-JOIN with subqueries) - 20%`);
+  console.log(`   ✓ Department hierarchy (full geography aggregation) - 15%`);
+  console.log(`   ✓ Job statistics (regional stats with STDDEV) - 10%`);
+  console.log(`   ✓ Salary ranges (nested aggregations & calculations) - 10%`);
+  console.log(`   ✓ Tenure analysis (date calculations & CASE) - 5%`);
   console.log('');
-  console.log(`   ℹ️  Note: INSERT, UPDATE, DELETE operations are commented out`);
-  console.log(`   📊 Total: 11 different SELECT query patterns with varying complexity`);
+  console.log(`   ℹ️  Note: Fast queries removed - only slow/complex queries tested`);
+  console.log(`   ℹ️  Note: Each VU executes ONE random query per iteration`);
+  console.log(`   📊 Total: 7 different SLOW query patterns for APM visibility`);
   console.log('');
   console.log('╚════════════════════════════════════════════════════════════════════════════╝');
   console.log('');
