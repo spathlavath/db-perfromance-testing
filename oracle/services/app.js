@@ -528,6 +528,187 @@ app.get('/reports/salary-by-department', async (req, res) => {
 // Workload Endpoints - Stimulate Oracle Metrics for newrelicoraclereceiver
 // ============================================================================
 
+// GET Versions - For K6 Load Testing (will show in New Relic APM)
+// ============================================================================
+
+// Complex multi-join query - will show in slow query analysis
+app.get('/reports/employee-analysis', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT e.employee_id, e.first_name, e.last_name, e.email, e.phone_number,
+              e.hire_date, e.salary, j.job_title, d.department_name,
+              m.first_name || ' ' || m.last_name as manager_name,
+              l.city, l.state_province, c.country_name,
+              (SELECT COUNT(*) FROM job_history jh WHERE jh.employee_id = e.employee_id) as job_changes,
+              (SELECT MAX(jh2.end_date) FROM job_history jh2 WHERE jh2.employee_id = e.employee_id) as last_job_change
+       FROM employees e
+       LEFT JOIN jobs j ON e.job_id = j.job_id
+       LEFT JOIN departments d ON e.department_id = d.department_id
+       LEFT JOIN employees m ON e.manager_id = m.employee_id
+       LEFT JOIN locations l ON d.location_id = l.location_id
+       LEFT JOIN countries c ON l.country_id = c.country_id
+       WHERE e.salary > 5000
+       ORDER BY e.employee_id
+       OFFSET 0 ROWS FETCH NEXT 50 ROWS ONLY`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, employees: result.rows });
+  } catch (err) {
+    logger.error('Error in employee analysis:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Department hierarchy with full aggregation - complex GROUP BY
+app.get('/reports/department-hierarchy', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT d.department_name,
+              l.city, l.state_province, c.country_name, r.region_name,
+              COUNT(DISTINCT e.employee_id) as total_employees,
+              COUNT(DISTINCT j.job_id) as unique_jobs,
+              MIN(e.salary) as min_salary,
+              MAX(e.salary) as max_salary,
+              AVG(e.salary) as avg_salary,
+              SUM(e.salary) as total_payroll,
+              MIN(e.hire_date) as oldest_hire,
+              MAX(e.hire_date) as newest_hire
+       FROM departments d
+       LEFT JOIN employees e ON d.department_id = e.department_id
+       LEFT JOIN jobs j ON e.job_id = j.job_id
+       LEFT JOIN locations l ON d.location_id = l.location_id
+       LEFT JOIN countries c ON l.country_id = c.country_id
+       LEFT JOIN regions r ON c.region_id = r.region_id
+       GROUP BY d.department_name, l.city, l.state_province, c.country_name, r.region_name
+       HAVING COUNT(e.employee_id) > 0
+       ORDER BY total_payroll DESC`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, departments: result.rows });
+  } catch (err) {
+    logger.error('Error in department hierarchy:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Job statistics across regions - multiple aggregations
+app.get('/reports/job-statistics', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT j.job_title,
+              r.region_name,
+              COUNT(e.employee_id) as employee_count,
+              AVG(e.salary) as avg_salary,
+              STDDEV(e.salary) as salary_stddev,
+              MIN(e.salary) as min_salary,
+              MAX(e.salary) as max_salary,
+              j.min_salary as job_min_salary,
+              j.max_salary as job_max_salary
+       FROM jobs j
+       LEFT JOIN employees e ON j.job_id = e.job_id
+       LEFT JOIN departments d ON e.department_id = d.department_id
+       LEFT JOIN locations l ON d.location_id = l.location_id
+       LEFT JOIN countries c ON l.country_id = c.country_id
+       LEFT JOIN regions r ON c.region_id = r.region_id
+       GROUP BY j.job_title, r.region_name, j.min_salary, j.max_salary
+       HAVING COUNT(e.employee_id) > 0
+       ORDER BY employee_count DESC`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, jobs: result.rows });
+  } catch (err) {
+    logger.error('Error in job statistics:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Employee tenure analysis - date calculations
+app.get('/reports/tenure-analysis', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT e.employee_id, e.first_name, e.last_name,
+              e.hire_date,
+              ROUND(MONTHS_BETWEEN(SYSDATE, e.hire_date)/12, 1) as years_of_service,
+              d.department_name,
+              j.job_title,
+              e.salary,
+              CASE 
+                WHEN MONTHS_BETWEEN(SYSDATE, e.hire_date)/12 < 2 THEN 'New'
+                WHEN MONTHS_BETWEEN(SYSDATE, e.hire_date)/12 < 5 THEN 'Mid-Level'
+                WHEN MONTHS_BETWEEN(SYSDATE, e.hire_date)/12 < 10 THEN 'Senior'
+                ELSE 'Veteran'
+              END as tenure_category
+       FROM employees e
+       LEFT JOIN departments d ON e.department_id = d.department_id
+       LEFT JOIN jobs j ON e.job_id = j.job_id
+       ORDER BY years_of_service DESC
+       OFFSET 0 ROWS FETCH NEXT 100 ROWS ONLY`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, employees: result.rows });
+  } catch (err) {
+    logger.error('Error in tenure analysis:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
+// Salary range analysis by job and location - nested aggregations
+app.get('/reports/salary-ranges', async (req, res) => {
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    const result = await connection.execute(
+      `SELECT j.job_title,
+              l.city,
+              c.country_name,
+              COUNT(e.employee_id) as emp_count,
+              MIN(e.salary) as current_min,
+              MAX(e.salary) as current_max,
+              AVG(e.salary) as current_avg,
+              j.min_salary as job_min,
+              j.max_salary as job_max,
+              ROUND((AVG(e.salary) - j.min_salary) / (j.max_salary - j.min_salary) * 100, 2) as salary_range_pct
+       FROM jobs j
+       LEFT JOIN employees e ON j.job_id = e.job_id
+       LEFT JOIN departments d ON e.department_id = d.department_id
+       LEFT JOIN locations l ON d.location_id = l.location_id
+       LEFT JOIN countries c ON l.country_id = c.country_id
+       WHERE e.employee_id IS NOT NULL
+       GROUP BY j.job_title, l.city, c.country_name, j.min_salary, j.max_salary
+       HAVING COUNT(e.employee_id) >= 2
+       ORDER BY emp_count DESC`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT }
+    );
+    res.json({ count: result.rows.length, ranges: result.rows });
+  } catch (err) {
+    logger.error('Error in salary ranges:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    if (connection) await connection.close();
+  }
+});
+
 // Parse-intensive workload - stimulates parse metrics
 app.post('/workload/parse', async (req, res) => {
   const { iterations = 50, use_binds = false } = req.body;
