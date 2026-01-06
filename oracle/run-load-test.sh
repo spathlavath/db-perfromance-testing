@@ -20,31 +20,33 @@ echo -e "${BLUE}╚════════════════════�
 echo ""
 
 # Set connection pool based on intensity
+# NOTE: Pool size fixed at 80 for 4-core Oracle DB (CPU cores × 20 = 80)
+# VUs will share these 80 connections through connection pooling with queuing
 case $INTENSITY in
   low)
-    POOL_MAX=150
-    POOL_MIN=50
-    MAX_VUS=100
+    POOL_MAX=80
+    POOL_MIN=20
+    MAX_VUS=50
     ;;
   medium)
-    POOL_MAX=250
-    POOL_MIN=75
-    MAX_VUS=200
+    POOL_MAX=80
+    POOL_MIN=20
+    MAX_VUS=100
     ;;
   high)
-    POOL_MAX=600
-    POOL_MIN=150
-    MAX_VUS=500
+    POOL_MAX=80
+    POOL_MIN=20
+    MAX_VUS=200
     ;;
   stress)
-    POOL_MAX=1200
-    POOL_MIN=300
-    MAX_VUS=1000
+    POOL_MAX=80
+    POOL_MIN=20
+    MAX_VUS=300
     ;;
   max)
-    POOL_MAX=2400
-    POOL_MIN=600
-    MAX_VUS=2000
+    POOL_MAX=80
+    POOL_MIN=20
+    MAX_VUS=400
     ;;
   *)
     echo -e "${RED}❌ Invalid intensity: $INTENSITY${NC}"

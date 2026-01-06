@@ -36,87 +36,87 @@ const TEST_INTENSITY = __ENV.TEST_INTENSITY || 'medium';
 const intensityProfiles = {
   low: {
     stages: [
-      { duration: '2m', target: 10 },   // Warm up to 10 VUs
-      { duration: '5m', target: 25 },   // Ramp up to 25 VUs
-      { duration: '10m', target: 50 },  // Increase to 50 VUs
-      { duration: '10m', target: 75 },  // Peak load at 75 VUs
-      { duration: '5m', target: 100 },  // Maximum stress at 100 VUs
-      { duration: '5m', target: 75 },   // Step down
-      { duration: '3m', target: 0 },    // Cool down
+      { duration: '1m', target: 5 },    // Warm up to 5 VUs
+      { duration: '2m', target: 15 },   // Ramp up to 15 VUs
+      { duration: '3m', target: 30 },   // Increase to 30 VUs
+      { duration: '3m', target: 40 },   // Peak load at 40 VUs
+      { duration: '2m', target: 50 },   // Maximum at 50 VUs
+      { duration: '2m', target: 30 },   // Step down
+      { duration: '1m', target: 0 },    // Cool down
     ],
     thinkTime: { min: 1, max: 2 },
     thresholds: {
       'http_req_duration': ['p(95)<2000', 'p(99)<3000'],
-      'http_req_failed': ['rate<0.05'],
-      'errors': ['rate<0.05'],
+      'http_req_failed': ['rate<0.01'],
+      'errors': ['rate<0.01'],
     },
   },
   medium: {
     stages: [
-      { duration: '2m', target: 20 },   // Warm up to 20 VUs
-      { duration: '5m', target: 50 },   // Ramp up to 50 VUs
-      { duration: '10m', target: 100 }, // Increase to 100 VUs
-      { duration: '10m', target: 150 }, // Peak load at 150 VUs
-      { duration: '5m', target: 200 },  // Maximum stress at 200 VUs
-      { duration: '5m', target: 150 },  // Step down
-      { duration: '3m', target: 0 },    // Cool down
+      { duration: '1m', target: 10 },   // Warm up to 10 VUs
+      { duration: '2m', target: 30 },   // Ramp up to 30 VUs
+      { duration: '4m', target: 60 },   // Increase to 60 VUs
+      { duration: '4m', target: 80 },   // Peak load at 80 VUs
+      { duration: '2m', target: 100 },  // Maximum at 100 VUs
+      { duration: '2m', target: 60 },   // Step down
+      { duration: '1m', target: 0 },    // Cool down
     ],
     thinkTime: { min: 0.5, max: 1 },
     thresholds: {
       'http_req_duration': ['p(95)<2500', 'p(99)<3500'],
-      'http_req_failed': ['rate<0.05'],
-      'errors': ['rate<0.05'],
+      'http_req_failed': ['rate<0.03'],
+      'errors': ['rate<0.03'],
     },
   },
   high: {
     stages: [
-      { duration: '2m', target: 50 },   // Warm up to 50 VUs
-      { duration: '5m', target: 150 },  // Ramp up to 150 VUs
-      { duration: '10m', target: 300 }, // Increase to 300 VUs
-      { duration: '10m', target: 400 }, // Peak load at 400 VUs
-      { duration: '5m', target: 500 },  // Maximum stress at 500 VUs
-      { duration: '5m', target: 400 },  // Step down
-      { duration: '3m', target: 0 },    // Cool down
+      { duration: '1m', target: 20 },   // Warm up to 20 VUs
+      { duration: '3m', target: 60 },   // Ramp up to 60 VUs
+      { duration: '5m', target: 120 },  // Increase to 120 VUs
+      { duration: '5m', target: 160 },  // Peak load at 160 VUs
+      { duration: '3m', target: 200 },  // Maximum at 200 VUs
+      { duration: '2m', target: 120 },  // Step down
+      { duration: '1m', target: 0 },    // Cool down
     ],
     thinkTime: { min: 0.2, max: 0.5 },
     thresholds: {
-      'http_req_duration': ['p(95)<3000', 'p(99)<4000'],
+      'http_req_duration': ['p(95)<3000', 'p(99)<4500'],
       'http_req_failed': ['rate<0.05'],
       'errors': ['rate<0.05'],
     },
   },
   stress: {
     stages: [
-      { duration: '2m', target: 100 },  // Warm up to 100 VUs
-      { duration: '5m', target: 300 },  // Ramp up to 300 VUs
-      { duration: '10m', target: 600 }, // Increase to 600 VUs
-      { duration: '10m', target: 800 }, // Peak load at 800 VUs
-      { duration: '5m', target: 1000 }, // Maximum stress at 1000 VUs
-      { duration: '5m', target: 800 },  // Step down
-      { duration: '3m', target: 0 },    // Cool down
+      { duration: '2m', target: 30 },   // Warm up to 30 VUs
+      { duration: '3m', target: 100 },  // Ramp up to 100 VUs
+      { duration: '5m', target: 180 },  // Increase to 180 VUs
+      { duration: '5m', target: 240 },  // Peak load at 240 VUs
+      { duration: '3m', target: 300 },  // Maximum stress at 300 VUs
+      { duration: '2m', target: 180 },  // Step down
+      { duration: '1m', target: 0 },    // Cool down
     ],
     thinkTime: { min: 0.1, max: 0.3 },
     thresholds: {
-      'http_req_duration': ['p(95)<8000', 'p(99)<10000'],
-      'http_req_failed': ['rate<0.70'],  // Allow up to 70% failure at peak stress
-      'errors': ['rate<0.70'],           // Stress tests are meant to find breaking points
+      'http_req_duration': ['p(95)<5000', 'p(99)<8000'],
+      'http_req_failed': ['rate<0.15'],  // Allow up to 15% failure at peak stress
+      'errors': ['rate<0.15'],           // Realistic stress testing
     },
   },
   max: {
     stages: [
-      { duration: '2m', target: 200 },  // Warm up to 200 VUs
-      { duration: '5m', target: 600 },  // Ramp up to 600 VUs
-      { duration: '10m', target: 1200 }, // Increase to 1200 VUs
-      { duration: '10m', target: 1600 }, // Peak load at 1600 VUs
-      { duration: '5m', target: 2000 },  // Maximum stress at 2000 VUs
-      { duration: '5m', target: 1600 },  // Step down
-      { duration: '3m', target: 0 },     // Cool down
+      { duration: '2m', target: 40 },   // Warm up to 40 VUs
+      { duration: '3m', target: 120 },  // Ramp up to 120 VUs
+      { duration: '6m', target: 240 },  // Increase to 240 VUs
+      { duration: '6m', target: 320 },  // Peak load at 320 VUs
+      { duration: '3m', target: 400 },  // Maximum at 400 VUs (DB capacity)
+      { duration: '2m', target: 240 },  // Step down
+      { duration: '1m', target: 0 },    // Cool down
     ],
     thinkTime: { min: 0.05, max: 0.2 },
     thresholds: {
-      'http_req_duration': ['p(95)<12000', 'p(99)<15000'],
-      'http_req_failed': ['rate<0.80'],  // Allow up to 80% failure at extreme load
-      'errors': ['rate<0.80'],           // Max stress expected to break the system
+      'http_req_duration': ['p(95)<8000', 'p(99)<12000'],
+      'http_req_failed': ['rate<0.30'],  // Allow up to 30% failure at capacity limit
+      'errors': ['rate<0.30'],           // Finding breaking point of 4-core DB
     },
   },
 };
