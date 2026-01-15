@@ -50,21 +50,22 @@ services:
       retries: 5
       start_period: 60s
 
-  k6:
-    image: grafana/k6
-    volumes:
-      - ./k6/scripts:/scripts
-    environment:
-      - BASE_URL=http://oracle-test-app:3000
-      - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}
-      - DETAILED_RESPONSE_LOGGING=${K6_DETAILED_LOGGING:-false}
-      - LOG_SLOW_REQUESTS_MS=${K6_LOG_SLOW_REQUESTS_MS:-5000}
-    depends_on:
-      oracle-test-app:
-        condition: service_healthy
-    networks:
-      - oracle-network
-    command: run /scripts/load-test.js
+  # k6 load testing (commented out - not needed for manual testing)
+  # k6:
+  #   image: grafana/k6
+  #   volumes:
+  #     - ./k6/scripts:/scripts
+  #   environment:
+  #     - BASE_URL=http://oracle-test-app:3000
+  #     - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}
+  #     - DETAILED_RESPONSE_LOGGING=${K6_DETAILED_LOGGING:-false}
+  #     - LOG_SLOW_REQUESTS_MS=${K6_LOG_SLOW_REQUESTS_MS:-5000}
+  #   depends_on:
+  #     oracle-test-app:
+  #       condition: service_healthy
+  #   networks:
+  #     - oracle-network
+  #   command: run /scripts/load-test.js
 
 networks:
   oracle-network:

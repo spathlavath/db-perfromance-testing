@@ -18,4 +18,14 @@ public class ReportController {
     public ResponseEntity<?> getSalaryByDepartment() {
         return ResponseEntity.ok(Map.of("report", reportService.getSalaryByDepartment()));
     }
+
+    @GetMapping("/employee-turnover")
+    public ResponseEntity<?> getEmployeeTurnoverReport() {
+        return ResponseEntity.ok(Map.of("report", reportService.getEmployeeTurnoverReport()));
+    }
+
+    @GetMapping("/location-wise")
+    public ResponseEntity<?> getLocationWiseReport() {
+        return ResponseEntity.ok(Map.of("report", reportService.getLocationWiseReport()));
+    }
 }

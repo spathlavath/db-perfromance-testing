@@ -48,9 +48,9 @@ common: &default_settings
     enabled: true
     transaction_threshold: apdex_f
     record_sql: obfuscated
-    stack_trace_threshold: 0.5
+    stack_trace_threshold: 0.1
     explain_enabled: true
-    explain_threshold: 0.5
+    explain_threshold: 0.1
 
   # Error collector
   error_collector:

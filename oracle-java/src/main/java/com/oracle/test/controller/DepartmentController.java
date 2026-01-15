@@ -23,4 +23,9 @@ public class DepartmentController {
     public ResponseEntity<?> getDepartmentEmployees(@PathVariable Long id) {
         return ResponseEntity.ok(Map.of("employees", departmentService.getDepartmentEmployees(id)));
     }
+
+    @GetMapping("/metrics")
+    public ResponseEntity<?> getDepartmentsWithMetrics() {
+        return ResponseEntity.ok(Map.of("departments", departmentService.getDepartmentsWithMetrics()));
+    }
 }

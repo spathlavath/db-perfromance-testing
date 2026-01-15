@@ -18,4 +18,9 @@ public class JobController {
     public ResponseEntity<?> getAllJobs() {
         return ResponseEntity.ok(Map.of("jobs", jobService.getAllJobs()));
     }
+
+    @GetMapping("/compensation-analysis")
+    public ResponseEntity<?> getJobsWithCompensationAnalysis() {
+        return ResponseEntity.ok(Map.of("jobs", jobService.getJobsWithCompensationAnalysis()));
+    }
 }
