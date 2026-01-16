@@ -81,7 +81,6 @@ common: &default_settings
       enabled: true
     database_name_reporting:
       enabled: true
-    use_tns_alias: true
 
 # Environment specific settings can override common settings
 development:
