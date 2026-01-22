@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  oracle-hr-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - ORACLE_USER=${ORACLE_USER}
+      - ORACLE_PASSWORD=${ORACLE_PASSWORD}
+      - ORACLE_CONNECT_STRING=${ORACLE_CONNECT_STRING}
+      - POOL_MIN=${POOL_MIN:-2}
+      - POOL_MAX=${POOL_MAX:-10}
+      - POOL_INCREMENT=${POOL_INCREMENT:-1}
+      - POOL_TIMEOUT=${POOL_TIMEOUT:-60}
+      - AUTO_RUN=${AUTO_RUN:-false}
+      - TEST_INTENSITY=${TEST_INTENSITY:-medium}
+      - TEST_DURATION=${TEST_DURATION:-600}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # New Relic APM Configuration
+      - NEW_RELIC_LICENSE_KEY=${NEW_RELIC_LICENSE_KEY}
+      - NEW_RELIC_APP_NAME=${NEW_RELIC_APP_NAME:-Oracle-HR-Portal-Java-V2}
+      - NEW_RELIC_HOST=${NEW_RELIC_HOST:-collector.newrelic.com}
+      - NEW_RELIC_LOG_LEVEL=${NEW_RELIC_LOG_LEVEL:-info}
+    ports:
+      - "3002:3002"
+    networks:
+      - oracle-network
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 0  # Unlimited restarts for continuous demo
+        window: 120s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 60s
+
+  # k6 load testing (commented out - not needed for manual testing)
+  # k6:
+  #   image: grafana/k6
+  #   volumes:
+  #     - ./k6/scripts:/scripts
+  #   environment:
+  #     - BASE_URL=http://oracle-hr-app:3002
+  #     - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}
+  #     - DETAILED_RESPONSE_LOGGING=${K6_DETAILED_LOGGING:-false}
+  #     - LOG_SLOW_REQUESTS_MS=${K6_LOG_SLOW_REQUESTS_MS:-5000}
+  #   depends_on:
+  #     oracle-hr-app:
+  #       condition: service_healthy
+  #   networks:
+  #     - oracle-network
+  #   command: run /scripts/load-test.js
+
+networks:
+  oracle-network:
+    driver: bridge

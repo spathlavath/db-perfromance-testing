@@ -1,0 +1,242 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                    Oracle-HR-java V2 - Quick Start Guide                     ║
+╔═══════════════════════════════════════════════════════════════════════════════╗
+
+📦 WHAT WAS CREATED
+═══════════════════════════════════════════════════════════════════════════════
+A complete copy of oracle-java with modifications to run alongside the original.
+
+Key Changes:
+  ✓ Port changed from 3001 → 3002
+  ✓ New Relic app name: Oracle-HR-Portal-Java-V2
+  ✓ Service name: oracle-hr-app
+  ✓ Connection pool name: OracleHRPoolV2
+
+🔌 HIKARICP CONNECTION POOL
+═══════════════════════════════════════════════════════════════════════════════
+Both applications use HikariCP with identical configuration:
+
+  Pool Name (V1):          OracleHRPool
+  Pool Name (V2):          OracleHRPoolV2
+  
+  Minimum Idle:            2 connections (configurable via POOL_MIN)
+  Maximum Pool Size:       10 connections (configurable via POOL_MAX)
+  Connection Timeout:      60 seconds (configurable via POOL_TIMEOUT)
+  Idle Timeout:            10 minutes
+  Max Connection Lifetime: 30 minutes
+  
+  Statement Cache:         250 prepared statements
+  Cache SQL Limit:         2048 bytes
+  Oracle Statement Cache:  25
+
+Environment Variables:
+  export POOL_MIN=5
+  export POOL_MAX=20
+  export POOL_TIMEOUT=60
+
+🚀 QUICK START
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Copy New Relic Agent (if not already present)
+   ─────────────────────────────────────────────
+   cp /path/to/newrelic.jar /Users/spathlavath/otel/db-perfromance-testing/Oracle-HR-java/
+
+2. Verify Environment Configuration
+   ─────────────────────────────────────────────
+   cd /Users/spathlavath/otel/db-perfromance-testing/Oracle-HR-java
+   cat .env
+   
+   # Ensure these are set:
+   # - ORACLE_USER
+   # - ORACLE_PASSWORD  
+   # - ORACLE_CONNECT_STRING
+   # - NEW_RELIC_LICENSE_KEY
+
+3. Build and Start
+   ─────────────────────────────────────────────
+   docker-compose up -d --build
+   
+4. Check Health
+   ─────────────────────────────────────────────
+   curl http://localhost:3002/health | jq .
+   
+5. Test Endpoints
+   ─────────────────────────────────────────────
+   chmod +x test-api.sh
+   ./test-api.sh
+
+6. Check Connection Pool
+   ─────────────────────────────────────────────
+   curl http://localhost:3002/pool-stats | jq .
+
+🔍 VERIFICATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Check Both Apps Running:
+  docker ps | grep -E "oracle-test-app|oracle-hr-app"
+
+Test Both Endpoints:
+  curl http://localhost:3001/health  # Original (oracle-java)
+  curl http://localhost:3002/health  # V2 (Oracle-HR-java)
+
+View Connection Pool Stats:
+  curl http://localhost:3001/pool-stats  # OracleHRPool
+  curl http://localhost:3002/pool-stats  # OracleHRPoolV2
+
+Check New Relic Reporting:
+  docker-compose logs oracle-hr-app | grep -i "new relic"
+
+📊 COMPARISON TABLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Feature                    oracle-java         Oracle-HR-java (V2)
+─────────────────────────  ──────────────────  ─────────────────────
+Directory                  oracle-java         Oracle-HR-java
+Application Port           3000 → 3001         3002 → 3002
+Service Name               oracle-test-app     oracle-hr-app
+Pool Name                  OracleHRPool        OracleHRPoolV2
+New Relic App              Oracle-HR-Portal-   Oracle-HR-Portal-
+                           Java                Java-V2
+Maven Artifact             oracle-hr-portal    oracle-hr-portal-v2
+Group ID                   com.oracle.test     com.oracle.hr.test
+Health Check               :3001/health        :3002/health
+Pool Stats                 :3001/pool-stats    :3002/pool-stats
+Test Script URL            localhost:3001      localhost:3002
+
+Connection Pool Settings   Both use HikariCP with same configuration
+API Endpoints              Identical functionality
+Database Schema            Both use same HR schema
+New Relic Features         Identical APM instrumentation
+
+🛠️ COMMON COMMANDS
+═══════════════════════════════════════════════════════════════════════════════
+
+# Start application
+docker-compose up -d --build
+
+# View logs (follow)
+docker-compose logs -f oracle-hr-app
+
+# View logs (last 100 lines)
+docker-compose logs --tail=100 oracle-hr-app
+
+# Stop application
+docker-compose down
+
+# Restart application
+docker-compose restart oracle-hr-app
+
+# View connection pool logs
+docker-compose logs oracle-hr-app | grep -i hikari
+
+# Check for connection leaks
+docker-compose logs oracle-hr-app | grep -i "leak"
+
+# View SQL execution logs
+docker-compose logs oracle-hr-app | grep "Executing prepared"
+
+# Check environment variables
+docker-compose exec oracle-hr-app env | grep -E "ORACLE|POOL|NEW_RELIC"
+
+# Shell into container
+docker-compose exec oracle-hr-app sh
+
+📁 API ENDPOINTS
+═══════════════════════════════════════════════════════════════════════════════
+
+Base URL: http://localhost:3002
+
+Health & Monitoring:
+  GET  /health              - Health check + database connectivity
+  GET  /pool-stats          - HikariCP pool statistics
+
+Employees:
+  GET  /employees           - List all employees (complex query)
+  GET  /employees/{id}      - Get employee by ID
+  POST /employees           - Create new employee
+  PUT  /employees/{id}      - Update employee
+  GET  /employees/{id}/history - Employee job history
+  POST /employees/{id}/promote - Promote employee
+
+Departments:
+  GET  /departments         - List all departments
+  GET  /departments/{id}/employees - Employees in department
+  GET  /departments/metrics - Department metrics
+
+Jobs:
+  GET  /jobs                - List all jobs
+  GET  /jobs/compensation-analysis - Compensation analysis
+
+Reports:
+  GET  /reports/salary-by-department - Salary analysis
+  GET  /reports/employee-turnover - Turnover metrics
+  GET  /reports/location-wise - Location analysis
+
+🐛 TROUBLESHOOTING
+═══════════════════════════════════════════════════════════════════════════════
+
+Port Conflict (3002 already in use):
+  lsof -i :3002
+  # If in use, update port in:
+  # - application.properties
+  # - docker-compose.yml
+  # - Dockerfile
+  # - test-api.sh
+
+Connection Pool Issues:
+  curl http://localhost:3002/pool-stats
+  docker-compose logs oracle-hr-app | grep -i "hikari"
+
+Database Connection Failed:
+  # Test connection
+  docker-compose exec oracle-hr-app curl http://localhost:3002/health
+  
+  # Verify credentials
+  docker-compose exec oracle-hr-app env | grep ORACLE
+
+New Relic Not Reporting:
+  # Check agent loaded
+  docker-compose logs oracle-hr-app | grep "New Relic Agent"
+  
+  # Verify license key
+  docker-compose exec oracle-hr-app env | grep NEW_RELIC_LICENSE_KEY
+  
+  # Test collector connectivity
+  docker-compose exec oracle-hr-app curl -I https://staging-collector.newrelic.com
+
+Application Won't Start:
+  # Check if newrelic.jar exists
+  ls -lh newrelic.jar
+  
+  # View build logs
+  docker-compose up --build
+  
+  # Check for errors
+  docker-compose logs oracle-hr-app | grep -i error
+
+📚 DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
+
+README_V2.md          - Complete application documentation
+SETUP_SUMMARY.md      - Detailed setup and configuration summary
+QUICK_START.txt       - This file
+.env                  - Environment configuration
+test-api.sh          - API testing script
+
+📝 NOTES
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Both applications use the SAME database schema (HR schema)
+✓ Both use HikariCP with IDENTICAL pool configuration
+✓ Connection pool settings can be adjusted via environment variables
+✓ Both can run simultaneously for load testing or comparison
+✓ Each application has its own connection pool instance
+✓ New Relic will show them as separate applications
+
+💡 TIP: Monitor both connection pools in New Relic using JMX metrics:
+   - OracleHRPool (oracle-java)
+   - OracleHRPoolV2 (Oracle-HR-java)
+
+═══════════════════════════════════════════════════════════════════════════════
+                              🎉 Setup Complete! 🎉
+═══════════════════════════════════════════════════════════════════════════════

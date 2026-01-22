@@ -1,0 +1,330 @@
+================================================================================
+ORACLE JAVA HR PORTAL - COMMANDS FOR ORACLE LINUX VM
+================================================================================
+
+📦 CREDENTIALS COPIED: ✅
+  - ORACLE_USER: hr
+  - ORACLE_PASSWORD: NewRelic_PW_7663_
+  - ORACLE_CONNECT_STRING: 10.0.1.36:1521/pdb1.privatesubnet.oracledb.oraclevcn.com
+  - New Relic OTLP Endpoint: Configured
+
+================================================================================
+STEP 1: TRANSFER FILES TO ORACLE LINUX VM
+================================================================================
+
+From your local machine (Mac), run:
+
+cd /Users/spathlavath/otel/db-perfromance-testing
+rsync -avz --progress oracle-java/ username@YOUR_VM_IP:~/oracle-java/
+
+OR using SCP:
+
+cd /Users/spathlavath/otel/db-perfromance-testing
+scp -r oracle-java username@YOUR_VM_IP:~/
+
+================================================================================
+STEP 2: SSH TO VM AND INSTALL DOCKER (First Time Only)
+================================================================================
+
+SSH to your VM:
+
+ssh username@YOUR_VM_IP
+
+Install Docker:
+
+sudo dnf update -y
+sudo dnf install -y dnf-utils
+sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo dnf install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo usermod -aG docker $USER
+
+IMPORTANT: Log out and log back in after adding user to docker group!
+
+Verify installation:
+
+docker --version
+docker compose version
+
+================================================================================
+STEP 3: DEPLOY THE APPLICATION (Easy Way - Use deploy.sh)
+================================================================================
+
+cd ~/oracle-java
+./deploy.sh up
+
+That's it! The application will build and start automatically.
+
+View logs:
+./deploy.sh logs
+
+Check status:
+./deploy.sh status
+
+Test endpoints:
+./deploy.sh test
+
+================================================================================
+STEP 3 (Alternative): DEPLOY THE APPLICATION (Manual Docker Commands)
+================================================================================
+
+cd ~/oracle-java
+
+# Build and start
+docker compose up --build -d
+
+# View logs
+docker compose logs -f
+
+# Check status
+docker compose ps
+
+# Test health
+curl http://localhost:3000/health
+
+================================================================================
+USING THE DEPLOY.SH SCRIPT (RECOMMENDED)
+================================================================================
+
+./deploy.sh up          # Start the application
+./deploy.sh stop        # Stop the application
+./deploy.sh down        # Stop and remove containers
+./deploy.sh restart     # Restart the application
+./deploy.sh logs        # View application logs
+./deploy.sh status      # Show status and health
+./deploy.sh rebuild     # Rebuild from scratch
+./deploy.sh clean       # Remove everything
+./deploy.sh test        # Test all API endpoints
+./deploy.sh k6          # Run k6 load test
+./deploy.sh help        # Show all commands
+
+================================================================================
+TESTING THE APPLICATION
+================================================================================
+
+# Health check
+curl http://localhost:3000/health
+
+# List employees
+curl http://localhost:3000/employees
+
+# Get specific employee
+curl http://localhost:3000/employees/100
+
+# List departments
+curl http://localhost:3000/departments
+
+# Get department employees
+curl http://localhost:3000/departments/60/employees
+
+# Salary report
+curl http://localhost:3000/reports/salary-by-department
+
+# List jobs
+curl http://localhost:3000/jobs
+
+# Pool statistics
+curl http://localhost:3000/pool-stats
+
+# Test all endpoints at once
+./deploy.sh test
+
+================================================================================
+VIEWING LOGS
+================================================================================
+
+# Using deploy script (recommended)
+./deploy.sh logs
+
+# Using docker compose directly
+docker compose logs -f
+
+# View specific service
+docker compose logs -f oracle-test-app
+
+# View last 100 lines
+docker compose logs --tail=100
+
+# Search for errors
+docker compose logs | grep -i error
+
+================================================================================
+STOPPING THE APPLICATION
+================================================================================
+
+# Stop containers (keeps data)
+./deploy.sh stop
+
+# Stop and remove containers
+./deploy.sh down
+
+# Full cleanup (removes everything including images)
+./deploy.sh clean
+
+================================================================================
+RESTARTING THE APPLICATION
+================================================================================
+
+# Quick restart
+./deploy.sh restart
+
+# Stop and start fresh
+./deploy.sh down
+./deploy.sh up
+
+# Rebuild from scratch
+./deploy.sh rebuild
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+# Check if application is running
+./deploy.sh status
+docker compose ps
+
+# View recent logs
+docker compose logs --tail=50 oracle-test-app
+
+# Check database connectivity
+docker compose exec oracle-test-app nc -zv 10.0.1.36 1521
+
+# Test health endpoint
+curl -v http://localhost:3000/health
+
+# Check environment variables
+docker compose exec oracle-test-app env | grep ORACLE
+
+# Check OpenTelemetry config
+docker compose exec oracle-test-app env | grep OTEL
+
+# View container details
+docker inspect oracle-java-oracle-test-app-1
+
+# Check resource usage
+docker stats
+
+# Rebuild if something is wrong
+./deploy.sh rebuild
+
+================================================================================
+RUNNING K6 LOAD TESTS
+================================================================================
+
+# Run k6 using deploy script
+./deploy.sh k6
+
+# Run k6 manually with default script
+docker run --rm -i --network oracle-java_oracle-network \
+  -v $(pwd)/k6/scripts:/scripts \
+  -e BASE_URL=http://oracle-test-app:3000 \
+  grafana/k6 run /scripts/load-test.js
+
+# Run with custom VUs and duration
+docker run --rm -i --network oracle-java_oracle-network \
+  -v $(pwd)/k6/scripts:/scripts \
+  -e BASE_URL=http://oracle-test-app:3000 \
+  grafana/k6 run --vus 10 --duration 30m /scripts/load-test.js
+
+# Run workload simulator test
+docker run --rm -i --network oracle-java_oracle-network \
+  -v $(pwd)/k6/scripts:/scripts \
+  -e BASE_URL=http://oracle-test-app:3000 \
+  grafana/k6 run /scripts/workload-simulator-test.js
+
+# Run oracle metrics test
+docker run --rm -i --network oracle-java_oracle-network \
+  -v $(pwd)/k6/scripts:/scripts \
+  -e API_URL=http://oracle-test-app:3000 \
+  grafana/k6 run /scripts/oracle-metrics.js
+
+================================================================================
+MONITORING OPENTELEMETRY DATA
+================================================================================
+
+The application automatically sends telemetry to New Relic:
+
+Service Name: HR-Portal
+Environment: Staging
+Endpoint: https://staging-otlp.nr-data.net:4318
+
+Check your New Relic dashboard to see:
+- Traces from database operations
+- Metrics (throughput, latency, errors)
+- Service performance data
+
+================================================================================
+FIREWALL CONFIGURATION (If Needed)
+================================================================================
+
+# Allow port 3000
+sudo firewall-cmd --permanent --add-port=3000/tcp
+sudo firewall-cmd --reload
+
+# Or temporarily disable firewall
+sudo systemctl stop firewalld
+
+================================================================================
+PERFORMANCE TUNING
+================================================================================
+
+Edit .env file to adjust settings:
+
+# Connection pool
+POOL_MIN=10
+POOL_MAX=50
+POOL_TIMEOUT=120
+
+# Memory (edit docker-compose.yml)
+memory: 4G  # under deploy.resources.limits
+
+Then restart:
+./deploy.sh restart
+
+================================================================================
+QUICK REFERENCE - MOST COMMON COMMANDS
+================================================================================
+
+# Deploy everything
+cd ~/oracle-java && ./deploy.sh up
+
+# Check if it's working
+./deploy.sh status
+curl http://localhost:3000/health
+
+# View logs
+./deploy.sh logs
+
+# Test endpoints
+./deploy.sh test
+
+# Restart if needed
+./deploy.sh restart
+
+# Stop when done
+./deploy.sh stop
+
+================================================================================
+SUCCESS CHECKLIST
+================================================================================
+
+✓ Docker installed and running
+✓ Files transferred to VM
+✓ Application started: ./deploy.sh up
+✓ Health check passes: curl http://localhost:3000/health
+✓ Endpoints responding: ./deploy.sh test
+✓ No errors in logs: ./deploy.sh logs
+✓ Data flowing to New Relic
+
+================================================================================
+NEED HELP?
+================================================================================
+
+1. Read QUICK_START.md for quick start guide
+2. Read DEPLOYMENT_GUIDE.md for detailed instructions
+3. Run: ./deploy.sh help
+4. Check logs: ./deploy.sh logs
+5. Test endpoints: ./deploy.sh test
+
+================================================================================
