@@ -43,8 +43,5 @@ ENTRYPOINT ["java", \
     "-Xms512m", \
     "-Xmx2048m", \
     "-Djava.security.egd=file:/dev/./urandom", \
-    "-Dsql_metadata.native=false", \
-    "-Dsql_metadata.comment=BOTH", \
-    "-Dsql_metadata.hash=true", \
     "-jar", \
     "app.jar"]
