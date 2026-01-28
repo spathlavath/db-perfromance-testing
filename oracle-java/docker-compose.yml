@@ -22,6 +22,7 @@ services:
       - NEW_RELIC_APP_NAME=${NEW_RELIC_APP_NAME:-Oracle-HR-Portal-Java}
       - NEW_RELIC_HOST=${NEW_RELIC_HOST:-collector.newrelic.com}
       - NEW_RELIC_LOG_LEVEL=${NEW_RELIC_LOG_LEVEL:-info}
+      - NEW_RELIC_TRANSACTION_TRACER_SQL_METADATA_COMMENTS=${NEW_RELIC_TRANSACTION_TRACER_SQL_METADATA_COMMENTS:-svc_name,txn_name}
     ports:
       - "3001:3000"
     networks:

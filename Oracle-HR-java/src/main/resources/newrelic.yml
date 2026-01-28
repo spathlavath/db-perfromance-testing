@@ -51,6 +51,7 @@ common: &default_settings
     stack_trace_threshold: 0.1
     explain_enabled: true
     explain_threshold: 0.1
+    sql_metadata_comments: svc_name
 
   # Error collector
   error_collector:
