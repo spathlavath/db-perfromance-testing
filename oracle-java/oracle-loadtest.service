@@ -1,0 +1,16 @@
+[Unit]
+Description=Oracle Load Test - Parallel Scenarios
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/home/opc/db-perfromance-testing/oracle-java
+ExecStart=/bin/bash /home/opc/db-perfromance-testing/oracle-java/run-parallel.sh
+Restart=always
+RestartSec=10
+Environment="INTERVAL=30"
+Environment="BASE_URL=http://localhost:3001"
+
+[Install]
+WantedBy=multi-user.target
