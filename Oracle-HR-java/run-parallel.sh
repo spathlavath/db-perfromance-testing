@@ -1,14 +1,14 @@
 #!/bin/bash
-# Run all test scenarios in parallel continuously
-# This simulates real application load with different query patterns
+# Run test scenarios in parallel continuously
+# Oracle-HR-java version (no blocking scenarios)
 
-BASE_URL="${BASE_URL:-http://localhost:3001}"
+BASE_URL="${BASE_URL:-http://localhost:3002}"
 INTERVAL="${INTERVAL:-60}"
 
 export BASE_URL
 
 echo "=========================================="
-echo "Oracle Load Test - Parallel Execution"
+echo "Oracle HR Load Test - Parallel Execution"
 echo "=========================================="
 echo "Base URL: $BASE_URL"
 echo "Interval: ${INTERVAL}s"
@@ -31,35 +31,31 @@ run_scenario() {
     done
 }
 
-# Start 4 workers in parallel (one for each scenario)
+# Start 3 workers in parallel (read-only, slow queries, and wait events)
 run_scenario "scenario-read-only.sh" 1 &
 PID1=$!
 
 run_scenario "scenario-slow-queries.sh" 2 &
 PID2=$!
 
-run_scenario "scenario-blocking.sh" 3 &
+run_scenario "scenario-wait-events.sh" 3 &
 PID3=$!
 
-run_scenario "scenario-wait-events.sh" 4 &
-PID4=$!
-
-echo "Started 4 parallel workers:"
+echo "Started 3 parallel workers:"
 echo "  Worker 1 (Read-Only): PID $PID1"
 echo "  Worker 2 (Slow Queries): PID $PID2"
-echo "  Worker 3 (Blocking): PID $PID3"
-echo "  Worker 4 (Wait Events): PID $PID4"
+echo "  Worker 3 (Wait Events): PID $PID3"
 echo ""
 echo "Press Ctrl+C to stop all workers"
 
 # Save PIDs for cleanup
-echo "$PID1 $PID2 $PID3 $PID4" > .worker-pids
+echo "$PID1 $PID2 $PID3" > .worker-pids
 
 # Cleanup function
 cleanup() {
     echo ""
     echo "Stopping all workers..."
-    kill $PID1 $PID2 $PID3 $PID4 2>/dev/null || true
+    kill $PID1 $PID2 $PID3 2>/dev/null || true
     rm -f .worker-pids
     echo "All workers stopped"
     exit 0

@@ -1,0 +1,16 @@
+[Unit]
+Description=Oracle HR Load Test - Parallel Scenarios
+After=network.target
+
+[Service]
+Type=simple
+User=opc
+WorkingDirectory=/home/opc/db-perfromance-testing/Oracle-HR-java
+ExecStart=/bin/bash /home/opc/db-perfromance-testing/Oracle-HR-java/run-parallel.sh
+Restart=always
+RestartSec=10
+Environment="INTERVAL=20"
+Environment="BASE_URL=http://localhost:3002"
+
+[Install]
+WantedBy=multi-user.target
