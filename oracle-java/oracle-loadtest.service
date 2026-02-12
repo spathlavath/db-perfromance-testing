@@ -9,7 +9,7 @@ WorkingDirectory=/home/opc/db-perfromance-testing/oracle-java
 ExecStart=/bin/bash /home/opc/db-perfromance-testing/oracle-java/run-parallel.sh
 Restart=always
 RestartSec=10
-Environment="INTERVAL=30"
+Environment="INTERVAL=20"
 Environment="BASE_URL=http://localhost:3001"
 
 [Install]
