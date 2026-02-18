@@ -2,7 +2,7 @@
 # Scenario 3: Blocking Scenarios
 # Use case: Row locks, table locks, blocking sessions, deadlocks
 
-BASE_URL="${BASE_URL:-http://localhost:3001}"
+BASE_URL="${BASE_URL:-http://localhost:3002}"
 
 echo "[$(date)] [BLOCKING] Starting blocking scenario..."
 

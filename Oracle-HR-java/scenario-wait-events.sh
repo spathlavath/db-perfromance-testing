@@ -1,48 +1,47 @@
 #!/bin/bash
-# Scenario 3: Wait Events (via concurrent access patterns)
-# Use case: Generate wait events through high concurrency and resource contention
-# Note: Oracle-HR-java doesn't have blocking APIs, so we create waits via concurrent queries
+# Scenario 4: Wait Events (I/O, CPU, Latch, Library Cache, Buffer Busy)
+# Use case: Generate various Oracle wait events that OTel will capture
 
 BASE_URL="${BASE_URL:-http://localhost:3002}"
 
 echo "[$(date)] [WAIT-EVENTS] Starting wait event scenario..."
 
-# Strategy: Run multiple concurrent queries to create buffer busy waits, latch contention
-
-# 1. Concurrent access to same employees (buffer busy waits, latch contention)
-echo "[$(date)] [WAIT-EVENTS] Creating concurrent access to same resources..."
-for i in {1..5}; do
-    curl -sf $BASE_URL/employees/100 > /dev/null 2>&1 &
-    curl -sf $BASE_URL/employees/101 > /dev/null 2>&1 &
-    curl -sf $BASE_URL/employees/102 > /dev/null 2>&1 &
-done
-wait
+# 1. Disk I/O wait events (db file sequential read, db file scattered read)
+echo "[$(date)] [WAIT-EVENTS] Creating disk I/O waits..."
+curl -sf -X POST "$BASE_URL/blocking/disk-io-wait?durationSeconds=5" > /dev/null 2>&1
 
 sleep 1
 
-# 2. Heavy aggregation queries running concurrently (CPU waits, I/O waits)
-echo "[$(date)] [WAIT-EVENTS] Creating CPU and I/O contention..."
-curl -sf $BASE_URL/reports/salary-by-department > /dev/null 2>&1 &
-curl -sf $BASE_URL/reports/employee-turnover > /dev/null 2>&1 &
-curl -sf $BASE_URL/departments/metrics > /dev/null 2>&1 &
-wait
+# 2. CPU-intensive wait events (CPU time)
+echo "[$(date)] [WAIT-EVENTS] Creating CPU waits..."
+curl -sf -X POST "$BASE_URL/blocking/cpu-wait?durationSeconds=5" > /dev/null 2>&1
 
 sleep 1
 
-# 3. Concurrent department queries (shared resource access)
-echo "[$(date)] [WAIT-EVENTS] Creating shared resource contention..."
-for i in {50,60,80,90,100}; do
-    curl -sf $BASE_URL/departments/${i}/employees > /dev/null 2>&1 &
-done
-wait
+# 3. Latch contention waits (latch: cache buffers chains)
+echo "[$(date)] [WAIT-EVENTS] Creating latch contention..."
+curl -sf -X POST "$BASE_URL/blocking/latch-contention?durationSeconds=5&threadCount=3" > /dev/null 2>&1
 
 sleep 1
 
-# 4. Mix of reads and complex queries (cache buffer chains latch)
-echo "[$(date)] [WAIT-EVENTS] Creating mixed workload contention..."
-curl -sf $BASE_URL/employees > /dev/null 2>&1 &
-curl -sf $BASE_URL/jobs/compensation-analysis > /dev/null 2>&1 &
-curl -sf $BASE_URL/employees/103/history > /dev/null 2>&1 &
-wait
+# 4. Library cache waits (library cache lock/pin)
+echo "[$(date)] [WAIT-EVENTS] Creating library cache waits..."
+curl -sf -X POST "$BASE_URL/blocking/library-cache-wait?durationSeconds=5" > /dev/null 2>&1
 
-echo "[$(date)] [WAIT-EVENTS] Completed - Generated buffer waits, latch contention, I/O waits"
+sleep 1
+
+# 5. Buffer busy waits (buffer busy waits, read by other session)
+echo "[$(date)] [WAIT-EVENTS] Creating buffer busy waits..."
+curl -sf -X POST "$BASE_URL/blocking/buffer-busy-wait?durationSeconds=5&concurrency=5" > /dev/null 2>&1
+
+sleep 1
+
+# 6. Row lock contention - Traditional blocking wait event
+echo "[$(date)] [WAIT-EVENTS] Creating TX row lock contention..."
+curl -sf -X POST "$BASE_URL/blocking/lock-employee/100?durationSeconds=3" > /dev/null 2>&1 &
+LOCK_PID=$!
+sleep 1
+curl -sf $BASE_URL/employees/100 > /dev/null 2>&1
+wait $LOCK_PID 2>/dev/null || true
+
+echo "[$(date)] [WAIT-EVENTS] Completed - Generated I/O, CPU, latch, library cache, buffer, and TX wait events"

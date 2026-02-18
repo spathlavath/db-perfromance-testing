@@ -86,16 +86,16 @@ common: &default_settings
 # Environment specific settings can override common settings
 development:
   <<: *default_settings
-  app_name: HR-Portal-Java (Development)
+  app_name: Payments (Development)
 
 test:
   <<: *default_settings
-  app_name: HR-Portal-Java (Test)
+  app_name: Payments (Test)
 
 production:
   <<: *default_settings
-  app_name: HR-Portal-Java (Production)
+  app_name: Payments (Production)
 
 staging:
   <<: *default_settings
-  app_name: HR-Portal-Java (Staging)
+  app_name: Payments (Staging)

@@ -24,7 +24,7 @@ services:
       - NEW_RELIC_LOG_LEVEL=${NEW_RELIC_LOG_LEVEL:-info}
       - NEW_RELIC_TRANSACTION_TRACER_SQL_METADATA_COMMENTS=${NEW_RELIC_TRANSACTION_TRACER_SQL_METADATA_COMMENTS:-svc_name,txn_name}
     ports:
-      - "3001:3000"
+      - "3001:3001"
     networks:
       - oracle-network
     deploy:

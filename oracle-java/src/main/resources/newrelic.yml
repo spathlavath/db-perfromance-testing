@@ -86,16 +86,16 @@ common: &default_settings
 # Environment specific settings can override common settings
 development:
   <<: *default_settings
-  app_name: Oracle-HR-Portal-Java (Development)
+  app_name: Employees (Development)
 
 test:
   <<: *default_settings
-  app_name: Oracle-HR-Portal-Java (Test)
+  app_name: Employees (Test)
 
 production:
   <<: *default_settings
-  app_name: Oracle-HR-Portal-Java (Production)
+  app_name: Employees (Production)
 
 staging:
   <<: *default_settings
-  app_name: Oracle-HR-Portal-Java (Staging)
+  app_name: Employees (Staging)
