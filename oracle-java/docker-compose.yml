@@ -45,7 +45,7 @@ services:
         max-file: "3"
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 60s
       timeout: 15s
       retries: 5
@@ -57,7 +57,7 @@ services:
   #   volumes:
   #     - ./k6/scripts:/scripts
   #   environment:
-  #     - BASE_URL=http://oracle-test-app:3000
+  #     - BASE_URL=http://oracle-test-app:3001
   #     - LOG_LEVEL=${K6_LOG_LEVEL:-INFO}
   #     - DETAILED_RESPONSE_LOGGING=${K6_DETAILED_LOGGING:-false}
   #     - LOG_SLOW_REQUESTS_MS=${K6_LOG_SLOW_REQUESTS_MS:-5000}

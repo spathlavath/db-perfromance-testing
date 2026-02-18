@@ -31,7 +31,7 @@ RUN chmod 644 /app/newrelic/newrelic.jar
 COPY src/main/resources/newrelic.yml /app/newrelic/newrelic.yml
 
 # Expose application port
-EXPOSE 3000
+EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=15s --timeout=10s --start-period=30s --retries=3 \
